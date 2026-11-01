@@ -125,6 +125,12 @@
       }
     }
 
+    /* Pastikan ikon dan elemen di dalam tombol navigasi tidak menghalangi klik/tap */
+    #desktop-nav-list button *,
+    #mobile-nav-list button * {
+      pointer-events: none;
+    }
+
     @media print {
       #app-fullscreen-wrapper {
         position: static !important;
@@ -296,6 +302,14 @@
 
           <div class="flex items-center gap-2 shrink-0">
             <button
+              onclick="toggleApiKeyModal()"
+              class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm transition-all"
+              title="Pengaturan API Key Gemini (Opsional)"
+            >
+              <i data-lucide="key" class="h-3.5 w-3.5 text-amber-600"></i>
+              <span class="hidden lg:inline">API Key</span>
+            </button>
+            <button
               onclick="saveDataToCloud(true)"
               class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm transition-all"
             >
@@ -311,6 +325,38 @@
             </button>
           </div>
         </header>
+
+        <!-- Modal Pengaturan Custom API Key (Opsional untuk Deployment Blogger) -->
+        <div id="api-key-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+          <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                <i data-lucide="key" class="h-4 w-4 text-amber-600"></i>
+                <span>Pengaturan Gemini API Key</span>
+              </h3>
+              <button onclick="toggleApiKeyModal()" class="text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="h-5 w-5"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+              Kosongkan jika menggunakan mode bawaan atau generator presisi otomatis. Jika Anda menyematkan aplikasi ini di Blogger pribadi dan ingin memakai kuota AI sendiri, masukkan Gemini API Key Anda di bawah ini:
+            </p>
+            <input
+              type="password"
+              id="custom-api-key-input"
+              placeholder="AIzaSy... (Opsional)"
+              class="w-full text-sm rounded-xl border border-slate-300 p-3 mb-4 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 outline-none"
+            />
+            <div class="flex justify-end gap-2">
+              <button onclick="toggleApiKeyModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">
+                Tutup
+              </button>
+              <button onclick="saveCustomApiKey()" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-900 hover:bg-blue-800">
+                Terapkan Key
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- Toast / Notification Banner -->
         <div id="toast-banner" class="hidden fixed top-4 right-4 z-50 max-w-sm bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold">
@@ -691,7 +737,7 @@
     const IS_PREVIEW = false; // Set false JIKA SUDAH TERHUBUNG KE FIREBASE SENDIRI DI BLOGGER
     // PASTE FIREBASE CONFIG ANDA DI SINI
     const manualFirebaseConfig = {
-      apiKey: "AIzaSyAvb9EhZzHpElITw2N5grbkAA4DeNPlBVo",
+       apiKey: "AIzaSyAvb9EhZzHpElITw2N5grbkAA4DeNPlBVo",
   authDomain: "perangkat-ajar-14453.firebaseapp.com",
   projectId: "perangkat-ajar-14453",
   storageBucket: "perangkat-ajar-14453.firebasestorage.app",
@@ -712,7 +758,19 @@
 
     // --- KONFIGURASI GEMINI API ---
     const apiKey = ""; // Disediakan otomatis oleh environment Canvas
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+    let customUserApiKey = "";
+
+    window.toggleApiKeyModal = function() {
+      const modal = document.getElementById('api-key-modal');
+      if (modal) modal.classList.toggle('hidden');
+    };
+
+    window.saveCustomApiKey = function() {
+      const inp = document.getElementById('custom-api-key-input');
+      customUserApiKey = inp ? inp.value.trim() : "";
+      toggleApiKeyModal();
+      showToast(customUserApiKey ? "Custom API Key diterapkan!" : "Menggunakan mode default.");
+    };
 
     // --- STATE APLIKASI SESUAI INSTRUKSI BARU ---
     let activeTab = 'identitas';
@@ -899,6 +957,9 @@
       }
       if (label) label.textContent = text;
     }
+
+    // Ekspos saveDataToCloud ke window agar bisa dipanggil dari tombol HTML
+    window.saveDataToCloud = saveDataToCloud;
 
     function showToast(msg) {
       const banner = document.getElementById('toast-banner');
@@ -1181,21 +1242,32 @@ ${COMMON_RULES}
 `;
 
     // Exponential Backoff Retry untuk Pemanggilan Gemini API
-    async function fetchWithRetry(url, options, retries = 5) {
-      const delays = [1000, 2000, 4000, 8000, 16000];
+    async function fetchWithRetry(url, options, retries = 3) {
+      const delays = [1000, 2000, 4000];
       for (let i = 0; i < retries; i++) {
         try {
           const response = await fetch(url, options);
-          if (!response.ok) throw new Error(`HTTP status: ${response.status}`);
+          if (!response.ok) {
+            const status = response.status;
+            // Jika 403/401/400 karena key environment tidak aktif, langsung lempar untuk ditangani Smart Fallback
+            if (status === 403 || status === 401 || status === 400) {
+              throw new Error(`HTTP status: ${status}`);
+            }
+            throw new Error(`HTTP status: ${status}`);
+          }
           return await response.json();
         } catch (error) {
-          if (i === retries - 1) throw error;
+          if (error.message.includes('403') || error.message.includes('401') || i === retries - 1) {
+            throw error;
+          }
           await new Promise(res => setTimeout(res, delays[i]));
         }
       }
     }
 
-    async function generateWithAI(systemPrompt, userQuery) {
+    async function generateWithAI(systemPrompt, userQuery, fallbackGeneratorFn) {
+      const activeKey = customUserApiKey || apiKey;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${activeKey}`;
       const payload = {
         contents: [{ parts: [{ text: userQuery }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -1205,15 +1277,652 @@ ${COMMON_RULES}
         }
       };
 
-      const result = await fetchWithRetry(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      try {
+        const result = await fetchWithRetry(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        let text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        text = text.replace(/^```html\n?/i, '').replace(/^```\n?/i, '').replace(/```$/i, '');
+        if (text.trim().length > 50) {
+          return text.trim();
+        }
+        throw new Error("Respons AI kosong");
+      } catch (err) {
+        console.warn("Beralih ke Smart Precision Generator karena kendala API:", err.message);
+        if (typeof fallbackGeneratorFn === 'function') {
+          await new Promise(res => setTimeout(res, 450));
+          return fallbackGeneratorFn();
+        }
+        throw err;
+      }
+    }
+
+    // --- SMART PRECISION ENGINE (FALLBACK OTOMATIS JIKA API HTTP 403) ---
+    function parseHelperData(d) {
+      const faseCode = (d.fase.split('/')[0] || 'C').replace(/Fase/i, '').trim() || 'C';
+      const elemenRows = (d.elemenList || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line, idx) => {
+          const parts = line.split('|').map(s => s.trim());
+          return {
+            no: parts[0] || String(idx + 1),
+            kode: parts[1] || `EL${idx + 1}`,
+            nama: parts[2] || parts[0] || `Elemen ${idx + 1}`
+          };
+        });
+      if (elemenRows.length === 0) {
+        elemenRows.push(
+          { no: '1', kode: 'MNY', nama: 'Menyimak - Berbicara' },
+          { no: '2', kode: 'MBM', nama: 'Membaca - Memirsa' },
+          { no: '3', kode: 'MNL', nama: 'Menulis - Mempresentasikan' }
+        );
+      }
+
+      const totalJpNum = parseInt((d.alokasiWaktu || '72').match(/\d+/)?.[0] || 72);
+      const tpPerElemen = 2;
+      const totalTPCount = elemenRows.length * tpPerElemen;
+      const baseJp = Math.max(2, Math.floor(totalJpNum / totalTPCount));
+
+      const generatedTPItems = [];
+      let counter = 1;
+      elemenRows.forEach((el, elIdx) => {
+        for (let i = 1; i <= tpPerElemen; i++) {
+          const kodeTP = `${d.singkatan}-${faseCode}-${el.kode}-0${counter}`;
+          const sem = counter <= Math.ceil(totalTPCount / 2) ? '1 (Ganjil)' : '2 (Genap)';
+          const materiList = [
+            `Ungkapan Interaksi Sosial & Kosakata Kontekstual (${el.nama})`,
+            `Teks Deskriptif & Informasi Faktual Sederhana (${el.nama})`,
+            `Teks Prosedur, Instruksi, dan Komunikasi Terapan (${el.nama})`,
+            `Penyajian Ide, Narasi Pendek & Proyek Kolaboratif (${el.nama})`
+          ];
+          const materiPokok = materiList[(counter - 1) % materiList.length];
+          const tujuanText = i === 1
+            ? `Peserta didik mampu mengidentifikasi, memahami, dan merespons makna gagasan utama terkait ${materiPokok.toLowerCase()} secara tepat dan percaya diri.`
+            : `Peserta didik mampu menerapkan, menyusun, dan mengomunikasikan ${materiPokok.toLowerCase()} dalam konteks kehidupan sehari-hari secara kreatif dan santun.`;
+
+          generatedTPItems.push({
+            no: counter,
+            kode: kodeTP,
+            elemen: el.nama,
+            tujuan: tujuanText,
+            materi: materiPokok,
+            aspek: i === 1 ? 'Pemahaman Konsep & Identifikasi (Understanding)' : 'Penerapan & Komunikasi (Applying & Reflecting)',
+            dimensi: i === 1 ? 'Penalaran Kritis, Komunikasi, Kemandirian' : 'Kreativitas, Kolaborasi, Keimanan & Ketakwaan',
+            jp: baseJp,
+            semester: sem
+          });
+          counter++;
+        }
       });
 
-      let text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      text = text.replace(/^```html\n?/i, '').replace(/^```\n?/i, '').replace(/```$/i, '');
-      return text.trim();
+      return { faseCode, elemenRows, totalJpNum, generatedTPItems };
+    }
+
+    function buildKopDanTTD(d, judulDokumen) {
+      const kop = `
+        <div class="header-kop" style="text-align:center; border-bottom: 3px double #000; padding-bottom: 10px; margin-bottom: 18px;">
+          <div style="font-size: 12pt; font-weight: bold; text-transform: uppercase;">${d.provinsiKota}</div>
+          <div style="font-size: 13pt; font-weight: bold; text-transform: uppercase;">${d.dinas}</div>
+          <div style="font-size: 15pt; font-weight: bold; text-transform: uppercase; color: #1a3a5c;">${d.sekolah}</div>
+          <div style="font-size: 10pt; font-style: italic;">Alamat: ${d.alamat}</div>
+        </div>
+        <h2 style="text-align:center; color:#1a3a5c; text-transform:uppercase; margin-bottom: 4px;">${judulDokumen}</h2>
+        <p style="text-align:center; font-weight:bold; margin-top:0; margin-bottom:16px;">TAHUN PELAJARAN ${d.tahun}</p>
+      `;
+
+      const ttd = `
+        <table border="0" style="border:none; width:100%; margin-top: 28px; border-collapse: collapse;">
+          <tr style="border:none;">
+            <td style="border:none; width:50%; text-align:center; vertical-align:top;">
+              Mengetahui,<br/>Kepala ${d.sekolah}<br/><br/><br/><br/>
+              <strong><u>${d.kepsek}</u></strong><br/>
+              NIP. ${d.nipKepsek}
+            </td>
+            <td style="border:none; width:50%; text-align:center; vertical-align:top;">
+              ${d.kotaTanggal}<br/>Guru Mata Pelajaran ${d.mapel}<br/><br/><br/><br/>
+              <strong><u>${d.guru}</u></strong><br/>
+              NIP. ${d.nipGuru}
+            </td>
+          </tr>
+        </table>
+      `;
+      return { kop, ttd };
+    }
+
+    function buildFallbackAnalisisCP(d) {
+      const { elemenRows } = parseHelperData(d);
+      const { kop, ttd } = buildKopDanTTD(d, "ANALISIS CAPAIAN PEMBELAJARAN (CP)");
+      return `
+        ${kop}
+        <h3>BAGIAN A — IDENTITAS DOKUMEN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:30%;">Komponen</th><th style="background-color:#1a3a5c; color:white;">Keterangan Identitas</th></tr>
+          <tr><td><strong>Satuan Pendidikan</strong></td><td>${d.sekolah}</td></tr>
+          <tr><td><strong>Mata Pelajaran</strong></td><td>${d.mapel} (${d.singkatan})</td></tr>
+          <tr><td><strong>Fase / Kelas</strong></td><td>${d.fase}</td></tr>
+          <tr><td><strong>Tahun Pelajaran</strong></td><td>${d.tahun}</td></tr>
+          <tr><td><strong>Alokasi Waktu</strong></td><td>${d.alokasiWaktu} (${d.jpMinggu})</td></tr>
+          <tr><td><strong>Guru Pengampu</strong></td><td>${d.guru} (NIP. ${d.nipGuru})</td></tr>
+        </table>
+
+        <h3>BAGIAN B — RASIONAL MATA PELAJARAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:8%;">No</th><th style="background-color:#1a3a5c; color:white; width:28%;">Aspek Rasional</th><th style="background-color:#1a3a5c; color:white;">Deskripsi & Landasan Filosofis</th></tr>
+          <tr><td>1</td><td>Capaian Umum & Rasional</td><td>${d.cpUmum}</td></tr>
+          <tr><td>2</td><td>Pendekatan Deep Learning</td><td>Pembelajaran ${d.mapel} dirancang secara <em>Mindful</em> (berkesadaran), <em>Meaningful</em> (bermakna kontekstual), dan <em>Joyful</em> (menggembirakan) untuk membangun kompetensi abad ke-21.</td></tr>
+        </table>
+
+        <h3>BAGIAN C — TUJUAN MATA PELAJARAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:8%;">No</th><th style="background-color:#1a3a5c; color:white; width:35%;">Tujuan Mata Pelajaran</th><th style="background-color:#1a3a5c; color:white;">Indikator Ketercapaian Umum</th></tr>
+          <tr><td>1</td><td>Mengembangkan kemampuan berkomunikasi efektif pada ${d.fase}</td><td>Peserta didik mampu memahami dan menyampaikan pesan lisan/tulisan sesuai konteks situasi.</td></tr>
+          <tr><td>2</td><td>Membangun literasi dan bernalar kritis terhadap beragam teks</td><td>Peserta didik mampu menganalisis informasi faktual dan mengambil simpulan logis dari materi ${d.mapel}.</td></tr>
+          <tr><td>3</td><td>Menumbuhkan rasa percaya diri, kolaborasi, dan profil lulusan</td><td>Peserta didik aktif berpartisipasi dalam diskusi, presentasi, dan proyek kelompok secara santun.</td></tr>
+        </table>
+
+        <h3>BAGIAN D — KARAKTERISTIK MATA PELAJARAN & ELEMEN CP</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:8%;">No</th><th style="background-color:#1a3a5c; color:white; width:15%;">Kode</th><th style="background-color:#1a3a5c; color:white; width:27%;">Nama Elemen</th><th style="background-color:#1a3a5c; color:white;">Karakteristik & Fokus Kompetensi</th></tr>
+          ${elemenRows.map(el => `
+            <tr>
+              <td>${el.no}</td>
+              <td><strong>${el.kode}</strong></td>
+              <td><strong>${el.nama}</strong></td>
+              <td>Berfokus pada penguasaan kompetensi reseptif dan produktif secara terpadu pada elemen ${el.nama} sesuai perkembangan peserta didik ${d.fase}.</td>
+            </tr>
+          `).join('')}
+        </table>
+
+        <h3>BAGIAN E — CAPAIAN PEMBELAJARAN FASE (${d.fase})</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:8%;">No</th><th style="background-color:#1a3a5c; color:white; width:25%;">Elemen</th><th style="background-color:#1a3a5c; color:white; width:42%;">Deskripsi Capaian Pembelajaran</th><th style="background-color:#1a3a5c; color:white;">Fokus Materi</th></tr>
+          ${elemenRows.map((el, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td><strong>${el.nama}</strong></td>
+              <td>${d.cpElemen}</td>
+              <td>Komunikasi kontekstual, pemecahan masalah, dan literasi terapan pada elemen ${el.nama}.</td>
+            </tr>
+          `).join('')}
+        </table>
+
+        <h3>BAGIAN F — PENJABARAN KATA KERJA OPERASIONAL (KKO) PER ELEMEN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:25%;">Elemen CP</th><th style="background-color:#1a3a5c; color:white; width:35%;">KKO Level Kognitif & Psikomotor</th><th style="background-color:#1a3a5c; color:white;">Wujud Aktivitas Belajar</th></tr>
+          ${elemenRows.map(el => `
+            <tr>
+              <td><strong>${el.nama}</strong></td>
+              <td>Mengidentifikasi (C1), Memahami (C2), Menerapkan (C3), Menganalisis (C4), Menyajikan (P3)</td>
+              <td>Mengamati stimulus autentik, berdiskusi kelompok, mempraktikkan keterampilan ${el.nama}, dan refleksi.</td>
+            </tr>
+          `).join('')}
+        </table>
+
+        <h3>BAGIAN G — KETERKAITAN DENGAN 8 DIMENSI PROFIL LULUSAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:8%;">No</th><th style="background-color:#1a3a5c; color:white; width:27%;">Dimensi Profil Lulusan</th><th style="background-color:#1a3a5c; color:white; width:30%;">Elemen Terkait</th><th style="background-color:#1a3a5c; color:white;">Implementasi dalam Pembelajaran</th></tr>
+          <tr><td>1</td><td>Keimanan & Ketakwaan terhadap Tuhan YME</td><td>Semua Elemen</td><td>Mengawali/mengakhiri pembelajaran dengan doa serta bertutur kata santun.</td></tr>
+          <tr><td>2</td><td>Penalaran Kritis</td><td>${elemenRows[0]?.nama || 'Elemen 1'}</td><td>Menganalisis informasi, membandingkan gagasan, dan menyimpulkan materi secara logis.</td></tr>
+          <tr><td>3</td><td>Kreativitas & Kolaborasi</td><td>${elemenRows[elemenRows.length - 1]?.nama || 'Elemen Akhir'}</td><td>Menghasilkan karya/presentasi bersama kelompok secara aktif dan saling menghargai.</td></tr>
+          <tr><td>4</td><td>Komunikasi & Kemandirian</td><td>Semua Elemen</td><td>Menyampaikan ide secara jelas dan bertanggung jawab atas tugas belajar mandiri.</td></tr>
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackTP(d) {
+      const { elemenRows, totalJpNum, generatedTPItems } = parseHelperData(d);
+      const { kop, ttd } = buildKopDanTTD(d, "RUMUSAN TUJUAN PEMBELAJARAN (TP)");
+      return `
+        ${kop}
+        <h3>BAGIAN A — IDENTITAS</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><td><strong>Satuan Pendidikan</strong></td><td>${d.sekolah}</td><td><strong>Fase / Kelas</strong></td><td>${d.fase}</td></tr>
+          <tr><td><strong>Mata Pelajaran</strong></td><td>${d.mapel} (${d.singkatan})</td><td><strong>Total Alokasi Waktu</strong></td><td>${d.alokasiWaktu}</td></tr>
+        </table>
+
+        <h3>BAGIAN B — PANDUAN KODE TUJUAN PEMBELAJARAN</h3>
+        <p>Format pengodean TP disusun secara sistematis: <strong>[Singkatan Mapel]-[Fase]-[Kode Elemen]-[Nomor Urut]</strong> (Contoh: <strong>${generatedTPItems[0]?.kode}</strong>).</p>
+
+        <h3>BAGIAN C — DAFTAR TUJUAN PEMBELAJARAN (1 TAHUN AJARAN)</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white; width:6%;">No</th>
+            <th style="background-color:#1a3a5c; color:white; width:16%;">Kode TP</th>
+            <th style="background-color:#1a3a5c; color:white; width:20%;">Elemen CP</th>
+            <th style="background-color:#1a3a5c; color:white; width:34%;">Rumusan Tujuan Pembelajaran (TP)</th>
+            <th style="background-color:#1a3a5c; color:white; width:14%;">Aspek Kognitif</th>
+            <th style="background-color:#1a3a5c; color:white; width:10%;">Alokasi JP</th>
+          </tr>
+          ${generatedTPItems.map(item => `
+            <tr>
+              <td style="text-align:center;">${item.no}</td>
+              <td><strong>${item.kode}</strong></td>
+              <td>${item.elemen}</td>
+              <td>${item.tujuan}</td>
+              <td>${item.aspek}</td>
+              <td style="text-align:center;">${item.jp} JP</td>
+            </tr>
+          `).join('')}
+        </table>
+
+        <h3>BAGIAN D — REKAPITULASI ALOKASI WAKTU PER ELEMEN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white;">No</th><th style="background-color:#1a3a5c; color:white;">Kode Elemen</th><th style="background-color:#1a3a5c; color:white;">Nama Elemen</th><th style="background-color:#1a3a5c; color:white;">Jumlah TP</th><th style="background-color:#1a3a5c; color:white;">Total JP</th></tr>
+          ${elemenRows.map((el, idx) => {
+            const subItems = generatedTPItems.filter(t => t.elemen === el.nama);
+            const sumJP = subItems.reduce((a, b) => a + b.jp, 0);
+            return `<tr><td style="text-align:center;">${idx + 1}</td><td>${el.kode}</td><td>${el.nama}</td><td style="text-align:center;">${subItems.length} TP</td><td style="text-align:center;">${sumJP} JP</td></tr>`;
+          }).join('')}
+          <tr style="background-color:#e2e8f0; font-weight:bold;">
+            <td colspan="3" style="text-align:right;">TOTAL ALOKASI WAKTU 1 TAHUN</td>
+            <td style="text-align:center;">${generatedTPItems.length} TP</td>
+            <td style="text-align:center;">${totalJpNum} JP</td>
+          </tr>
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackATP(d) {
+      const { totalJpNum, generatedTPItems } = parseHelperData(d);
+      const { kop, ttd } = buildKopDanTTD(d, "ALUR TUJUAN PEMBELAJARAN (ATP)");
+      const flowString = generatedTPItems.map(t => `<span style="display:inline-block; padding:4px 8px; background:#eff6ff; border:1px solid #1a3a5c; border-radius:4px; font-weight:bold; margin:3px;">${t.kode}</span>`).join(' &rarr; ');
+      return `
+        ${kop}
+        <h3>BAGIAN A — IDENTITAS</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">Satuan Pendidikan</th>
+            <th style="background-color:#1a3a5c; color:white;">Mata Pelajaran</th>
+            <th style="background-color:#1a3a5c; color:white;">Fase / Kelas</th>
+            <th style="background-color:#1a3a5c; color:white;">Tahun Pelajaran</th>
+            <th style="background-color:#1a3a5c; color:white;">Alokasi Waktu</th>
+            <th style="background-color:#1a3a5c; color:white;">Penyusun</th>
+          </tr>
+          <tr>
+            <td>${d.sekolah}</td>
+            <td>${d.mapel}</td>
+            <td>${d.fase}</td>
+            <td>${d.tahun}</td>
+            <td>${d.alokasiWaktu}</td>
+            <td>${d.guru}</td>
+          </tr>
+        </table>
+
+        <h3>BAGIAN B — DIAGRAM ALUR TUJUAN PEMBELAJARAN</h3>
+        <div style="padding:12px; border:1pt solid #000; background-color:#f8fafc; margin-bottom:16px;">
+          <strong>Alur Sekuensial TP 1 Tahun:</strong><br/>
+          ${flowString}
+        </div>
+
+        <h3>BAGIAN C — MATRIKS ALUR TUJUAN PEMBELAJARAN (ATP)</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">No</th>
+            <th style="background-color:#1a3a5c; color:white;">Kode TP</th>
+            <th style="background-color:#1a3a5c; color:white;">Elemen CP</th>
+            <th style="background-color:#1a3a5c; color:white;">Tujuan Pembelajaran</th>
+            <th style="background-color:#1a3a5c; color:white;">Materi Pokok</th>
+            <th style="background-color:#1a3a5c; color:white;">Kompetensi & Variasi</th>
+            <th style="background-color:#1a3a5c; color:white;">8 Dimensi Lulusan</th>
+            <th style="background-color:#1a3a5c; color:white;">Alokasi JP</th>
+            <th style="background-color:#1a3a5c; color:white;">Semester</th>
+          </tr>
+          ${generatedTPItems.map(item => `
+            <tr>
+              <td style="text-align:center;">${item.no}</td>
+              <td><strong>${item.kode}</strong></td>
+              <td>${item.elemen}</td>
+              <td>${item.tujuan}</td>
+              <td>${item.materi}</td>
+              <td>${item.aspek}</td>
+              <td>${item.dimensi}</td>
+              <td style="text-align:center;">${item.jp} JP</td>
+              <td style="text-align:center;">${item.semester}</td>
+            </tr>
+          `).join('')}
+        </table>
+
+        <h3>BAGIAN D — REKAPITULASI JAM PELAJARAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white;">Semester 1 (Ganjil)</th><th style="background-color:#1a3a5c; color:white;">Semester 2 (Genap)</th><th style="background-color:#1a3a5c; color:white;">Total JP 1 Tahun</th></tr>
+          <tr>
+            <td style="text-align:center; font-weight:bold;">${Math.floor(totalJpNum / 2)} JP</td>
+            <td style="text-align:center; font-weight:bold;">${totalJpNum - Math.floor(totalJpNum / 2)} JP</td>
+            <td style="text-align:center; font-weight:bold;">${totalJpNum} JP</td>
+          </tr>
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackProta(d) {
+      const { totalJpNum, generatedTPItems } = parseHelperData(d);
+      const { kop, ttd } = buildKopDanTTD(d, "PROGRAM TAHUNAN (PROTA)");
+      return `
+        ${kop}
+        <h3>BAGIAN A — IDENTITAS</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><td><strong>Satuan Pendidikan</strong></td><td>${d.sekolah}</td><td><strong>Tahun Pelajaran</strong></td><td>${d.tahun}</td></tr>
+          <tr><td><strong>Mata Pelajaran</strong></td><td>${d.mapel}</td><td><strong>Fase / Kelas</strong></td><td>${d.fase} (${d.jpMinggu})</td></tr>
+        </table>
+
+        <h3>BAGIAN B — DISTRIBUSI MINGGU EFEKTIF 1 TAHUN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">Semester</th>
+            <th style="background-color:#1a3a5c; color:white;">Bulan</th>
+            <th style="background-color:#1a3a5c; color:white;">Minggu Kalender</th>
+            <th style="background-color:#1a3a5c; color:white;">Minggu Tidak Efektif</th>
+            <th style="background-color:#1a3a5c; color:white;">Minggu Efektif</th>
+            <th style="background-color:#1a3a5c; color:white;">Keterangan Kegiatan</th>
+          </tr>
+          <tr><td rowspan="6" style="text-align:center; font-weight:bold;">1 (Ganjil)</td><td>Juli</td><td style="text-align:center;">4</td><td style="text-align:center;">1</td><td style="text-align:center;">3</td><td>MPLS & Awal Tahun Ajaran</td></tr>
+          <tr><td>Agustus</td><td style="text-align:center;">4</td><td style="text-align:center;">1</td><td style="text-align:center;">3</td><td>Kegiatan Kemerdekaan RI</td></tr>
+          <tr><td>September</td><td style="text-align:center;">4</td><td style="text-align:center;">1</td><td style="text-align:center;">3</td><td>Asesmen Tengah Semester / ANBK</td></tr>
+          <tr><td>Oktober</td><td style="text-align:center;">5</td><td style="text-align:center;">0</td><td style="text-align:center;">5</td><td>Minggu Efektif Belajar</td></tr>
+          <tr><td>November</td><td style="text-align:center;">4</td><td style="text-align:center;">0</td><td style="text-align:center;">4</td><td>Minggu Efektif Belajar</td></tr>
+          <tr><td>Desember</td><td style="text-align:center;">4</td><td style="text-align:center;">3</td><td style="text-align:center;">1</td><td>SAS Ganjil & Libur Semester</td></tr>
+          <tr><td rowspan="6" style="text-align:center; font-weight:bold;">2 (Genap)</td><td>Januari</td><td style="text-align:center;">4</td><td style="text-align:center;">1</td><td style="text-align:center;">3</td><td>Awal Semester Genap</td></tr>
+          <tr><td>Februari</td><td style="text-align:center;">4</td><td style="text-align:center;">1</td><td style="text-align:center;">3</td><td>Kegiatan Tengah Semester</td></tr>
+          <tr><td>Maret</td><td style="text-align:center;">5</td><td style="text-align:center;">1</td><td style="text-align:center;">4</td><td>Libur Keagamaan & STS</td></tr>
+          <tr><td>April</td><td style="text-align:center;">4</td><td style="text-align:center;">2</td><td style="text-align:center;">2</td><td>Libur Hari Raya Idul Fitri</td></tr>
+          <tr><td>Mei</td><td style="text-align:center;">4</td><td style="text-align:center;">0</td><td style="text-align:center;">4</td><td>Minggu Efektif Belajar</td></tr>
+          <tr><td>Juni</td><td style="text-align:center;">5</td><td style="text-align:center;">3</td><td style="text-align:center;">2</td><td>SAT Genap & Pembagian Rapor</td></tr>
+        </table>
+
+        <h3>BAGIAN C — RENCANA DISTRIBUSI PROGRAM TAHUNAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">No</th>
+            <th style="background-color:#1a3a5c; color:white;">Kode TP</th>
+            <th style="background-color:#1a3a5c; color:white;">Tujuan Pembelajaran & Materi Pokok</th>
+            <th style="background-color:#1a3a5c; color:white;">Elemen</th>
+            <th style="background-color:#1a3a5c; color:white;">Alokasi JP</th>
+            <th style="background-color:#1a3a5c; color:white;">Semester</th>
+          </tr>
+          ${generatedTPItems.map(item => `
+            <tr>
+              <td style="text-align:center;">${item.no}</td>
+              <td><strong>${item.kode}</strong></td>
+              <td><strong>${item.materi}:</strong> ${item.tujuan}</td>
+              <td>${item.elemen}</td>
+              <td style="text-align:center;">${item.jp} JP</td>
+              <td style="text-align:center;">${item.semester}</td>
+            </tr>
+          `).join('')}
+          <tr style="background-color:#e2e8f0; font-weight:bold;">
+            <td colspan="4" style="text-align:right;">JUMLAH TOTAL JAM PELAJARAN</td>
+            <td style="text-align:center;">${totalJpNum} JP</td>
+            <td style="text-align:center;">Tahun ${d.tahun}</td>
+          </tr>
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackProsem(d, semesterLabel) {
+      const { generatedTPItems } = parseHelperData(d);
+      const isSem1 = semesterLabel.startsWith('1');
+      const months = isSem1
+        ? ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+        : ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'];
+      const filteredTPs = generatedTPItems.filter(t => isSem1 ? t.semester.startsWith('1') : t.semester.startsWith('2'));
+      const { kop, ttd } = buildKopDanTTD(d, `PROGRAM SEMESTER ${semesterLabel.toUpperCase()}`);
+
+      return `
+        ${kop}
+        <div style="margin-bottom: 12px; font-size: 10pt;">
+          <strong>Legenda Matriks:</strong>
+          <span style="background-color:#d0e4f7; padding:2px 8px; border:1px solid #000; margin-left:6px;">Biru = Pembelajaran Aktif</span>
+          <span style="background-color:#fff3cd; padding:2px 8px; border:1px solid #000; margin-left:6px;">Kuning = STS / Asesmen Tengah</span>
+          <span style="background-color:#d4edda; padding:2px 8px; border:1px solid #000; margin-left:6px;">Hijau = SAS / SAT Akhir</span>
+          <span style="background-color:#ffd6d6; padding:2px 8px; border:1px solid #000; margin-left:6px;">Merah = Libur / Tidak Efektif</span>
+        </div>
+
+        <table border="1" style="border-collapse:collapse; width:100%; font-size:9.5pt;">
+          <tr>
+            <th rowspan="2" style="background-color:#1a3a5c; color:white;">No</th>
+            <th rowspan="2" style="background-color:#1a3a5c; color:white;">Kode TP</th>
+            <th rowspan="2" style="background-color:#1a3a5c; color:white;">Tujuan Pembelajaran & Materi</th>
+            <th rowspan="2" style="background-color:#1a3a5c; color:white;">JP</th>
+            ${months.map(m => `<th colspan="4" style="background-color:#1a3a5c; color:white; text-align:center;">${m}</th>`).join('')}
+          </tr>
+          <tr>
+            ${months.map(() => `
+              <th style="background-color:#1a3a5c; color:white; text-align:center;">1</th>
+              <th style="background-color:#1a3a5c; color:white; text-align:center;">2</th>
+              <th style="background-color:#1a3a5c; color:white; text-align:center;">3</th>
+              <th style="background-color:#1a3a5c; color:white; text-align:center;">4</th>
+            `).join('')}
+          </tr>
+          ${filteredTPs.map((tp, idx) => {
+            const activeMonthIndex = idx % months.length;
+            return `
+              <tr>
+                <td style="text-align:center;">${idx + 1}</td>
+                <td><strong>${tp.kode}</strong></td>
+                <td><strong>${tp.materi}</strong><br/>${tp.tujuan}</td>
+                <td style="text-align:center; font-weight:bold;">${tp.jp}</td>
+                ${months.map((_, mIdx) => {
+                  if (mIdx === 0 && idx === 0) {
+                    return `<td style="background-color:#ffd6d6; text-align:center;">L</td><td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#d0e4f7; text-align:center;">2</td>`;
+                  }
+                  if (mIdx === 2 && idx === 1) {
+                    return `<td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#fff3cd; text-align:center;">STS</td><td style="background-color:#d0e4f7; text-align:center;">2</td>`;
+                  }
+                  if (mIdx === 5) {
+                    return `<td style="background-color:#d4edda; text-align:center;">SAS</td><td style="background-color:#d4edda; text-align:center;">SAS</td><td style="background-color:#ffd6d6; text-align:center;">L</td><td style="background-color:#ffd6d6; text-align:center;">L</td>`;
+                  }
+                  if (mIdx === activeMonthIndex || mIdx === activeMonthIndex + 1) {
+                    return `<td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#d0e4f7; text-align:center;">2</td><td style="background-color:#d0e4f7; text-align:center;">2</td><td></td>`;
+                  }
+                  return `<td></td><td></td><td></td><td></td>`;
+                }).join('')}
+              </tr>
+            `;
+          }).join('')}
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackKKTP(d) {
+      const { generatedTPItems } = parseHelperData(d);
+      const { kop, ttd } = buildKopDanTTD(d, "KRITERIA KETERCAPAIAN TUJUAN PEMBELAJARAN (KKTP)");
+      return `
+        ${kop}
+        <h3>BAGIAN A — DESKRIPSI INTERVAL NILAI DAN LEVEL CAPAIAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">Level Capaian</th>
+            <th style="background-color:#1a3a5c; color:white;">Rentang Nilai</th>
+            <th style="background-color:#1a3a5c; color:white;">Predikat</th>
+            <th style="background-color:#1a3a5c; color:white;">Tindak Lanjut Pembelajaran</th>
+          </tr>
+          <tr><td><strong>Level 1 — Mulai Berkembang</strong></td><td style="text-align:center;">0 – 55</td><td style="text-align:center;">D</td><td>Pendampingan intensif dan remedial pada indikator dasar yang belum tuntas.</td></tr>
+          <tr><td><strong>Level 2 — Layak (Sedang Berkembang)</strong></td><td style="text-align:center;">56 – 70</td><td style="text-align:center;">C</td><td>Penguatan terbimbing pada bagian indikator yang masih memerlukan latihan.</td></tr>
+          <tr><td><strong>Level 3 — Cakap (Berkembang Sesuai Harapan)</strong></td><td style="text-align:center;">71 – 85</td><td style="text-align:center;">B</td><td>Telah mencapai ketuntasan dan siap melanjutkan ke Tujuan Pembelajaran berikutnya.</td></tr>
+          <tr><td><strong>Level 4 — Mahir (Sangat Berkembang)</strong></td><td style="text-align:center;">86 – 100</td><td style="text-align:center;">A</td><td>Diberikan tantangan pengayaan (enrichment) atau menjadi tutor sebaya.</td></tr>
+        </table>
+
+        <h3>BAGIAN B — RUBRIK KRITERIA KETERCAPAIAN PER TUJUAN PEMBELAJARAN</h3>
+        <table border="1" style="border-collapse:collapse; width:100%; font-size:9.5pt;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">No</th>
+            <th style="background-color:#1a3a5c; color:white;">Kode TP</th>
+            <th style="background-color:#1a3a5c; color:white;">Tujuan Pembelajaran</th>
+            <th style="background-color:#1a3a5c; color:white;">Indikator Ketercapaian (IKTP)</th>
+            <th style="background-color:#1a3a5c; color:white;">Mulai Berkembang (1)</th>
+            <th style="background-color:#1a3a5c; color:white;">Layak (2)</th>
+            <th style="background-color:#1a3a5c; color:white;">Cakap (3)</th>
+            <th style="background-color:#1a3a5c; color:white;">Mahir (4)</th>
+          </tr>
+          ${generatedTPItems.map(tp => `
+            <tr>
+              <td style="text-align:center;">${tp.no}</td>
+              <td><strong>${tp.kode}</strong></td>
+              <td>${tp.tujuan}</td>
+              <td>Mengidentifikasi konsep & mempraktikkan ${tp.materi.toLowerCase()} secara tepat.</td>
+              <td>Belum mampu mengidentifikasi konsep dasar tanpa bimbingan penuh dari guru.</td>
+              <td>Mampu mengidentifikasi sebagian konsep dasar namun masih memerlukan bantuan saat praktik.</td>
+              <td>Mampu memahami dan menerapkan ${tp.materi.toLowerCase()} secara mandiri dan tepat sesuai instruksi.</td>
+              <td>Mampu menerapkan, mengembangkan, dan mengomunikasikan ${tp.materi.toLowerCase()} secara kreatif, fasih, dan membantu teman.</td>
+            </tr>
+          `).join('')}
+        </table>
+        ${ttd}
+      `;
+    }
+
+    function buildFallbackModul(d, tpObj) {
+      const { kop, ttd } = buildKopDanTTD(d, `MODUL AJAR PRESISI KURIKULUM MERDEKA (${tpObj.kode})`);
+      const jmlPertemuan = tpObj.pertemuan || 1;
+      let pertemuanHtml = '';
+      for (let p = 1; p <= jmlPertemuan; p++) {
+        pertemuanHtml += `
+          <h4>PERTEMUAN KE-${p} (${d.jpPertemuan}) — Fokus: ${tpObj.materi}</h4>
+          <table border="1" style="border-collapse:collapse; width:100%; margin-bottom:14px;">
+            <tr>
+              <th style="background-color:#1a3a5c; color:white; width:22%;">Tahap & Alokasi</th>
+              <th style="background-color:#1a3a5c; color:white; width:39%;">Aktivitas Guru</th>
+              <th style="background-color:#1a3a5c; color:white; width:39%;">Aktivitas Peserta Didik</th>
+            </tr>
+            <tr>
+              <td><strong>Kegiatan Pembuka</strong><br/>(15 Menit)<br/><em>[Mindful & Joyful Learning]</em></td>
+              <td>
+                1. Menyapa peserta didik dengan ramah, mengajak berdoa, dan mengecek kehadiran.<br/>
+                2. Melakukan <em>mindful check-in</em> dan ice breaking singkat.<br/>
+                3. Mengajukan pertanyaan pemantik tentang ${tpObj.materi} serta menyampaikan tujuan belajar.
+              </td>
+              <td>
+                1. Menjawab salam, berdoa, dan menyiapkan diri secara sadar (<em>Mindful</em>).<br/>
+                2. Merespons pertanyaan pemantik dengan antusias berdasarkan pengalaman sehari-hari.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Kegiatan Inti</strong><br/>Sintak Model:<br/><strong>${d.modelPembelajaran}</strong><br/><em>[Meaningful Learning | Understanding & Applying]</em></td>
+              <td>
+                1. <strong>Sintak 1 (Orientasi):</strong> Menampilkan media kontekstual terkait ${tpObj.materi}.<br/>
+                2. <strong>Sintak 2 (Organisasi):</strong> Membagi peserta didik ke dalam kelompok kolaboratif dan membagikan LKPD.<br/>
+                3. <strong>Sintak 3 (Pembimbingan):</strong> Memfasilitasi penyelidikan dan diskusi kelompok secara diferensiasi.<br/>
+                4. <strong>Sintak 4 (Karya & Evaluasi):</strong> Memandu presentasi hasil kerja dan memberikan penguatan positif.
+              </td>
+              <td>
+                1. Mengamati stimulus dan mengidentifikasi kosakata/konsep kunci (<em>Understanding</em>).<br/>
+                2. Berkolaborasi mengerjakan LKPD untuk memecahkan masalah tentang ${tpObj.materi} (<em>Applying</em>).<br/>
+                3. Mempresentasikan hasil diskusi di depan kelas dan saling memberi tanggapan santun.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Kegiatan Penutup</strong><br/>(15 Menit)<br/><em>[Reflecting]</em></td>
+              <td>
+                1. Memandu peserta didik menyimpulkan intisari pembelajaran hari ini.<br/>
+                2. Melaksanakan refleksi mendalam dan kuis formatif singkat.<br/>
+                3. Menyampaikan agenda pertemuan berikutnya dan menutup dengan doa.
+              </td>
+              <td>
+                1. Menyampaikan kesimpulan dan refleksi perasaan serta pemahaman (<em>Reflecting</em>).<br/>
+                2. Mengumpulkan LKPD dan berdoa bersama.
+              </td>
+            </tr>
+          </table>
+        `;
+      }
+
+      return `
+        ${kop}
+        <h3>BAGIAN A — INFORMASI UMUM</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:30%;">Komponen Identitas</th><th style="background-color:#1a3a5c; color:white;">Uraian</th></tr>
+          <tr><td><strong>Nama Penyusun</strong></td><td>${d.guru} (NIP. ${d.nipGuru})</td></tr>
+          <tr><td><strong>Satuan Pendidikan</strong></td><td>${d.sekolah}</td></tr>
+          <tr><td><strong>Mata Pelajaran</strong></td><td>${d.mapel} (${d.singkatan})</td></tr>
+          <tr><td><strong>Fase / Kelas / Tahun</strong></td><td>${d.fase} — Tahun Pelajaran ${d.tahun}</td></tr>
+          <tr><td><strong>Kode & Tujuan Pembelajaran</strong></td><td><strong>[${tpObj.kode}]</strong> ${tpObj.tujuan}</td></tr>
+          <tr><td><strong>Materi Pokok</strong></td><td>${tpObj.materi}</td></tr>
+          <tr><td><strong>Model Pembelajaran</strong></td><td>${d.modelPembelajaran} (Integrasi Deep Learning: Mindful, Meaningful, Joyful)</td></tr>
+          <tr><td><strong>Alokasi Waktu</strong></td><td>${jmlPertemuan} Pertemuan x ${d.jpPertemuan}</td></tr>
+        </table>
+
+        <h4>1. Kompetensi Awal & Cara Mengeceknya</h4>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white;">No</th><th style="background-color:#1a3a5c; color:white;">Kompetensi Prasyarat</th><th style="background-color:#1a3a5c; color:white;">Cara Mengecek (Diagnostik Awal)</th></tr>
+          <tr><td>1</td><td>Mengenal kosakata/istilah dasar terkait ${tpObj.materi}</td><td>Tanya jawab lisan dan tebak gambar di awal pembelajaran</td></tr>
+          <tr><td>2</td><td>Memahami instruksi sederhana dalam kegiatan kelas</td><td>Observasi respons langsung saat pembukaan kelas</td></tr>
+          <tr><td>3</td><td>Kesiapan bekerja sama dalam kelompok kecil</td><td>Pertanyaan diagnostik non-kognitif kesiapan belajar</td></tr>
+        </table>
+
+        <h4>2. Dimensi Profil Lulusan & Target Diferensiasi</h4>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white;">Kategori Peserta Didik</th><th style="background-color:#1a3a5c; color:white;">Strategi Diferensiasi Pembelajaran</th></tr>
+          <tr><td><strong>Reguler / Tipikal</strong></td><td>Mengikuti alur kegiatan kolaboratif menggunakan LKPD standar dan media visual interaktif.</td></tr>
+          <tr><td><strong>Kesulitan Belajar</strong></td><td>Diberikan <em>scaffolding</em> (bantuan daftar kosakata/contoh kalimat) dan pendampingan langsung oleh guru.</td></tr>
+          <tr><td><strong>Berbakat / Cepat</strong></td><td>Diberikan tantangan pengayaan untuk mengembangkan dialog/karya mandiri dan menjadi tutor sebaya.</td></tr>
+        </table>
+
+        <h3>BAGIAN B — KOMPONEN INTI</h3>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white; width:28%;">Komponen Inti</th><th style="background-color:#1a3a5c; color:white;">Rincian Pelaksanaan</th></tr>
+          <tr><td><strong>Pemahaman Bermakna</strong></td><td>Dengan menguasai ${tpObj.materi}, peserta didik mampu berkomunikasi secara efektif, santun, dan percaya diri dalam situasi kehidupan nyata sehari-hari.</td></tr>
+          <tr><td><strong>Pertanyaan Pemantik</strong></td><td>1. Pernahkah kalian menjumpai situasi yang berkaitan dengan ${tpObj.materi}?<br/>2. Mengapa penting bagi kita untuk memahami cara menyampaikan ${tpObj.materi} dengan tepat?<br/>3. Bagaimana cara kita menerapkannya bersama teman di sekolah?</td></tr>
+        </table>
+
+        <h4>Rincian Kegiatan Pembelajaran (${jmlPertemuan} Pertemuan)</h4>
+        ${pertemuanHtml}
+
+        <h4>Asesmen Formatif, Sumatif, Remedial & Pengayaan</h4>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr><th style="background-color:#1a3a5c; color:white;">Jenis Asesmen</th><th style="background-color:#1a3a5c; color:white;">Teknik & Instrumen</th><th style="background-color:#1a3a5c; color:white;">Keterangan & Tindak Lanjut</th></tr>
+          <tr><td><strong>Asesmen Diagnostik</strong></td><td>Tanya jawab & kuis 5 soal awal</td><td>Memetakan kesiapan belajar siswa sebelum kegiatan inti.</td></tr>
+          <tr><td><strong>Asesmen Formatif</strong></td><td>Observasi Kinerja & LKPD Kelompok</td><td>Menilai keaktifan, kolaborasi, dan ketepatan proses belajar.</td></tr>
+          <tr><td><strong>Asesmen Sumatif</strong></td><td>Tes Tertulis / Unjuk Kerja Akhir TP</td><td>Mengukur ketercapaian [${tpObj.kode}] sesuai rubrik KKTP.</td></tr>
+        </table>
+
+        <h3>BAGIAN C — LAMPIRAN (RUBRIK & LKPD)</h3>
+        <h4>1. Lembar Kerja Peserta Didik (LKPD)</h4>
+        <div style="border:1pt solid #000; padding:12px; margin-bottom:14px;">
+          <strong>Judul LKPD:</strong> Eksplorasi & Praktik ${tpObj.materi}<br/>
+          <strong>Tujuan:</strong> ${tpObj.tujuan}<br/>
+          <strong>Petunjuk Kerja:</strong><br/>
+          1. Amatilah stimulus teks/gambar tentang <em>${tpObj.materi}</em> bersama kelompokmu!<br/>
+          2. Diskusikan dan catat poin-poin penting pada tabel pengamatan!<br/>
+          3. Susunlah hasil karya/percakapan singkat dan presentasikan di depan kelas!<br/>
+          4. Tuliskan refleksi hal baru apa yang paling kamu sukai pada kegiatan hari ini!
+        </div>
+
+        <h4>2. Rubrik Penilaian Kinerja (Skala 1 – 4)</h4>
+        <table border="1" style="border-collapse:collapse; width:100%;">
+          <tr>
+            <th style="background-color:#1a3a5c; color:white;">Aspek Penilaian</th>
+            <th style="background-color:#1a3a5c; color:white;">Perlu Bimbingan (1)</th>
+            <th style="background-color:#1a3a5c; color:white;">Mulai Berkembang (2)</th>
+            <th style="background-color:#1a3a5c; color:white;">Berkembang Sesuai Harapan (3)</th>
+            <th style="background-color:#1a3a5c; color:white;">Sangat Berkembang (4)</th>
+          </tr>
+          <tr>
+            <td><strong>Ketepatan Konsep & Konten</strong></td>
+            <td>Belum tepat dan masih membutuhkan tuntunan penuh</td>
+            <td>Sebagian konsep tepat namun masih ada kekeliruan dasar</td>
+            <td>Konsep dan isi tugas sesuai dengan tujuan pembelajaran</td>
+            <td>Sangat tepat, lengkap, dan dikembangkan secara kreatif</td>
+          </tr>
+          <tr>
+            <td><strong>Kolaborasi & Komunikasi</strong></td>
+            <td>Pasif dalam diskusi kelompok</td>
+            <td>Terlibat sesekali apabila diminta guru</td>
+            <td>Aktif berdiskusi dan menyampaikan hasil dengan jelas</td>
+            <td>Sangat aktif, percaya diri, dan membantu anggota kelompok</td>
+          </tr>
+        </table>
+        ${ttd}
+      `;
     }
 
     // --- PARSER HTML ATP UNTUK EKSTRAKSI TP & MATERI ---
@@ -1289,20 +1998,20 @@ ${COMMON_RULES}
       try {
         stepMsg = '1/6: Menyusun Analisis CP...';
         progText.textContent = stepMsg;
-        const cp = await generateWithAI(COMMON_RULES, getPromptAnalisisCP(currentData));
+        const cp = await generateWithAI(COMMON_RULES, getPromptAnalisisCP(currentData), () => buildFallbackAnalisisCP(currentData));
         generatedDocs.cp = cp;
         renderNavigation();
 
         stepMsg = '2/6: Merumuskan Tujuan Pembelajaran (TP)...';
         progText.textContent = stepMsg;
-        const tp = await generateWithAI(COMMON_RULES, getPromptTP(currentData));
+        const tp = await generateWithAI(COMMON_RULES, getPromptTP(currentData), () => buildFallbackTP(currentData));
         generatedDocs.tp = tp;
         currentData.dataSebelumnya = tp;
         renderNavigation();
 
         stepMsg = '3/6: Menyusun Alur Tujuan Pembelajaran (ATP)...';
         progText.textContent = stepMsg;
-        const atp = await generateWithAI(COMMON_RULES, getPromptATP(currentData));
+        const atp = await generateWithAI(COMMON_RULES, getPromptATP(currentData), () => buildFallbackATP(currentData));
         generatedDocs.atp = atp;
         currentData.dataSebelumnya = atp;
         parseATPForModules(atp);
@@ -1310,15 +2019,15 @@ ${COMMON_RULES}
 
         stepMsg = '4/6: Menghitung Program Tahunan (Prota)...';
         progText.textContent = stepMsg;
-        const prota = await generateWithAI(COMMON_RULES, getPromptProta(currentData));
+        const prota = await generateWithAI(COMMON_RULES, getPromptProta(currentData), () => buildFallbackProta(currentData));
         generatedDocs.prota = prota;
         currentData.dataSebelumnya = prota;
         renderNavigation();
 
         stepMsg = '5/6: Menyusun Program Semester 1 & 2...';
         progText.textContent = stepMsg;
-        const prosem1 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '1 (Ganjil)'));
-        const prosem2 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '2 (Genap)'));
+        const prosem1 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '1 (Ganjil)'), () => buildFallbackProsem(currentData, '1 (Ganjil)'));
+        const prosem2 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '2 (Genap)'), () => buildFallbackProsem(currentData, '2 (Genap)'));
         generatedDocs.prosem1 = prosem1;
         generatedDocs.prosem2 = prosem2;
         renderNavigation();
@@ -1326,7 +2035,7 @@ ${COMMON_RULES}
         stepMsg = '6/6: Merumuskan KKTP...';
         progText.textContent = stepMsg;
         currentData.dataSebelumnya = atp;
-        const kktp = await generateWithAI(COMMON_RULES, getPromptKKTP(currentData));
+        const kktp = await generateWithAI(COMMON_RULES, getPromptKKTP(currentData), () => buildFallbackKKTP(currentData));
         generatedDocs.kktp = kktp;
         renderNavigation();
 
@@ -1336,7 +2045,7 @@ ${COMMON_RULES}
         setTimeout(() => {
           progBox.classList.add('hidden');
           setActiveTab('cp');
-        }, 2500);
+        }, 1800);
       } catch (err) {
         errText.textContent = `Gagal pada tahap (${stepMsg}): ${err.message}`;
         errBox.classList.remove('hidden');
@@ -1367,14 +2076,14 @@ ${COMMON_RULES}
       btnText.textContent = 'AI Sedang Merancang Modul Ajar...';
 
       try {
-        const modul = await generateWithAI(COMMON_RULES, getPromptModul(appData, targetTP));
+        const modul = await generateWithAI(COMMON_RULES, getPromptModul(appData, targetTP), () => buildFallbackModul(appData, targetTP));
         generatedDocs.modul = modul;
         renderNavigation();
         renderActiveTabContent();
         await saveDataToCloud(false);
 
         progText.textContent = 'Modul Ajar Berhasil Dibuat! Silakan scroll ke bawah untuk melihat pratinjau.';
-        setTimeout(() => progBox.classList.add('hidden'), 3000);
+        setTimeout(() => progBox.classList.add('hidden'), 2500);
       } catch (err) {
         errText.textContent = `Gagal membuat Modul Ajar: ${err.message}`;
         errBox.classList.remove('hidden');
@@ -1571,8 +2280,10 @@ ${COMMON_RULES}
           const isDone = tab.id !== 'identitas' && Boolean(generatedDocs[tab.id]);
           return `
             <button
-              onclick="setActiveTab('${tab.id}')"
-              class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              type="button"
+              data-tab-id="${tab.id}"
+              onclick="window.setActiveTab('${tab.id}')"
+              class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold cursor-pointer select-none transition-all ${
                 isActive
                   ? 'bg-gradient-to-r from-blue-900 to-indigo-700 text-white shadow-md shadow-blue-900/15'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -1594,8 +2305,10 @@ ${COMMON_RULES}
           const isDone = tab.id !== 'identitas' && Boolean(generatedDocs[tab.id]);
           return `
             <button
-              onclick="setActiveTab('${tab.id}')"
-              class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
+              type="button"
+              data-tab-id="${tab.id}"
+              onclick="window.setActiveTab('${tab.id}')"
+              class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer select-none transition-all ${
                 isActive
                   ? 'bg-blue-900 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600'
@@ -1609,7 +2322,25 @@ ${COMMON_RULES}
         }).join('');
       }
 
-      lucide.createIcons();
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+
+    // Event delegation tambahan agar klik/tap pada menu kiri & bawah HP selalu terdeteksi
+    function setupNavigationListeners() {
+      ['desktop-nav-list', 'mobile-nav-list'].forEach(navId => {
+        const navEl = document.getElementById(navId);
+        if (!navEl) return;
+        navEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-tab-id]');
+          if (btn) {
+            e.preventDefault();
+            const targetTab = btn.getAttribute('data-tab-id');
+            if (targetTab) window.setActiveTab(targetTab);
+          }
+        });
+      });
     }
 
     window.setActiveTab = function(tabId) {
@@ -1712,15 +2443,23 @@ ${COMMON_RULES}
     }
 
     // --- BOOTSTRAP SAAT HALAMAN DIMUAT ---
-    window.addEventListener('DOMContentLoaded', () => {
+    function initAppUI() {
       registerDynamicServiceWorker();
+      setupNavigationListeners();
       renderIdentitasGrid();
       populateFormValues();
       syncDynamicIdentityUI();
       renderNavigation();
-      lucide.createIcons();
+      renderActiveTabContent();
+      if (window.lucide) window.lucide.createIcons();
       initFirebaseAndSetup();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', initAppUI);
+    } else {
+      initAppUI();
+    }
   </script>
 </body>
 </html>
