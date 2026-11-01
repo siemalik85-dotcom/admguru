@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  BookOpen, FileText, Calendar, Layout, User, Lock, Sparkles,
-  LogOut, Printer, Code, Loader2, AlertCircle, CheckCircle2,
-  ChevronRight, Settings, Check, Download, Eye, EyeOff, Mail, Cloud,
-  Menu, X, ZoomIn, ZoomOut, RefreshCw, School, Layers, FileCheck
+  BookOpen, FileText, Calendar, Layout, Sparkles,
+  LogOut, Loader2, AlertCircle, CheckCircle2,
+  ChevronRight, Settings, Check, Eye, EyeOff, Cloud,
+  Menu, X, ZoomIn, ZoomOut, School, FileCheck
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -25,16 +25,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'perangkat-ajar-14453';
 
-// Helper untuk mengubah email menjadi ID dokumen yang aman
 const sanitizeEmailKey = (email) => {
   return email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
 };
 
 // --- CONFIGURATION & API ---
-const apiKey = ""; // Provided by environment
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+const apiKey = ""; 
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
-// Retry logic for API calls (Exponential Backoff)
 const fetchWithRetry = async (url, options, retries = 5) => {
   const delays = [1000, 2000, 4000, 8000, 16000];
   for (let i = 0; i < retries; i++) {
@@ -66,7 +64,6 @@ const generateWithAI = async (systemPrompt, userQuery) => {
   });
   
   let text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  // Clean markdown html blocks if AI adds them
   text = text.replace(/^```html\n/i, '').replace(/^```\n/i, '').replace(/```$/i, '');
   return text;
 };
@@ -187,9 +184,9 @@ ${COMMON_RULES}
 `;
 
 const getPromptModul = (d, tpObj) => `
-Anda adalah seorang Ahli Kurikulum Merdeka, Instruktur Nasional, dan Guru Penggerak yang ahli dalam merancang Desain Pembelajaran Presisi (Precision Teaching Module).
+Anda adalah seorang Ahli Kurikulum Merdeka, Instruktur Nasional, dan Guru Penggerak yang ahli dalam merancang Desain Pembelajaran (Precision Teaching Module).
 
-Tugas Anda adalah membuat Modul Ajar Presisi yang komprehensif, terstruktur, dan aplikatif berdasarkan Kurikulum Merdeka. Modul ajar ini harus terintegrasi dengan sintak dari model pembelajaran yang dipilih, mengadaptasi prinsip Deep Learning (Mindful, Meaningful, Joyful), dan mengintegrasikan prinsip kognitif (Understanding, Applying, Reflecting).
+Tugas Anda adalah membuat Modul Ajar yang komprehensif, terstruktur, dan aplikatif berdasarkan Kurikulum Merdeka. Modul ajar ini harus terintegrasi dengan sintak dari model pembelajaran yang dipilih, mengadaptasi prinsip Deep Learning (Mindful, Meaningful, Joyful), dan mengintegrasikan prinsip kognitif (Understanding, Applying, Reflecting).
 
 Gunakan informasi berikut sebagai dasar pembuatan modul:
 
@@ -200,7 +197,7 @@ Tujuan Pembelajaran (TP): [${tpObj.kode}] ${tpObj.tujuan}
 Model Pembelajaran: ${d.modelPembelajaran}
 Alokasi Waktu: ${tpObj.pertemuan} Pertemuan x ${d.jpPertemuan}
 
-Susunlah Modul Ajar Presisi tersebut dengan format dan kelengkapan persis seperti struktur di bawah ini. Gunakan tabel HTML murni untuk format tabel (bukan markdown).
+Susunlah Modul Ajar tersebut dengan format dan kelengkapan persis seperti struktur di bawah ini. Gunakan tabel HTML murni untuk format tabel (bukan markdown).
 
 STRUKTUR MODUL AJAR YANG HARUS DIBUAT:
 
@@ -251,19 +248,19 @@ ATURAN TAMBAHAN UNTUK AI:
 Gunakan bahasa Indonesia yang baku, profesional, namun mudah dipahami (bahasa pendidik).
 Pastikan alur kegiatan logis dan benar-benar mencerminkan model pembelajaran yang dipilih.
 Tunjukkan inovasi abad 21 (literasi digital, pemanfaatan AI/Tools web, kolaborasi) dalam kegiatan siswa.
-Jangan berikan deskripsi pengantar, langsung hasilkan output Modul Ajar Presisi sesuai struktur.
+Jangan berikan deskripsi pengantar, langsung hasilkan output Modul Ajar sesuai struktur.
 
 ${COMMON_RULES}
 `;
 
-
 // --- MAIN APP COMPONENT ---
 export default function App() {
   const [user, setUser] = useState(null);
-  const [userEmail, setUserEmail] = useState('');
+  const [userEmail, setUserEmail] = useState(() => {
+    try { return localStorage.getItem('gm_last_email') || ''; } catch { return ''; }
+  });
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // Otentikasi sesi perangkat di latar belakang
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -273,7 +270,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Gagal menginisialisasi sesi:", err);
+        console.warn("Info Auth: Gunakan fitur Cloud atau aktifkan Anonymous Sign-in di Firebase Console.", err);
       }
     };
     initAuth();
@@ -283,7 +280,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Memuat email terakhir yang digunakan pada perangkat ini
   useEffect(() => {
     if (!user) return;
     const loadLastSession = async () => {
@@ -294,7 +290,7 @@ export default function App() {
           setUserEmail(snap.data().lastEmail);
         }
       } catch (err) {
-        console.error("Gagal memuat sesi terakhir:", err);
+        // Abaikan jika belum ada sesi
       }
     };
     loadLastSession();
@@ -304,12 +300,13 @@ export default function App() {
     const cleanEmail = emailInput.trim().toLowerCase();
     setUserEmail(cleanEmail);
     setIsLoggedIn(true);
+    try { localStorage.setItem('gm_last_email', cleanEmail); } catch {}
     if (user) {
       try {
         const sessionRef = doc(db, 'artifacts', appId, 'users', user.uid, 'session', 'current');
         await setDoc(sessionRef, { lastEmail: cleanEmail, updatedAt: Date.now() }, { merge: true });
       } catch (err) {
-        console.error("Gagal menyimpan sesi email:", err);
+        // Fallback ke penyimpanan email utama
       }
     }
   };
@@ -348,14 +345,12 @@ function LoginScreen({ initialEmail, onLogin }) {
     const cleanPass = password.trim().toLowerCase();
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setError('Silakan masukkan alamat email aktif Anda untuk menyimpan data perangkat ajar secara otomatis.');
+      setError('Silakan masukkan alamat email aktif Anda.');
       return;
     }
 
     const isValidUser = cleanUser === 'gurumerdeka';
-    const isValidPass = 
-      cleanPass === 'guru merdeka' || 
-      cleanPass === 'gurumerdeka';
+    const isValidPass = cleanPass === 'guru merdeka' || cleanPass === 'gurumerdeka';
 
     if (isValidUser && isValidPass) {
       setError('');
@@ -366,129 +361,77 @@ function LoginScreen({ initialEmail, onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#070B19] flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden selection:bg-indigo-500 selection:text-white">
-      {/* Ambient Modern Mesh Gradients & Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_50%,#000_60%,transparent_100%)] opacity-25 pointer-events-none" />
-      <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[550px] h-[350px] bg-gradient-to-tr from-indigo-600/30 via-blue-500/25 to-cyan-400/20 rounded-full blur-[110px] pointer-events-none" />
-      <div className="absolute -bottom-32 left-1/3 w-[450px] h-[350px] bg-gradient-to-tr from-purple-600/20 via-indigo-500/20 to-blue-500/20 rounded-full blur-[110px] pointer-events-none" />
-
+    <div className="min-h-screen bg-[#070B19] flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       <div className="w-full max-w-md z-10">
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-400 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-500" />
-          
-          <div className="relative bg-slate-900/80 backdrop-blur-2xl py-10 px-6 sm:px-10 shadow-2xl rounded-[1.85rem] border border-white/10">
-            <div className="flex flex-col items-center text-center mb-8">
-              <div className="relative mb-5">
-                <div className="absolute -inset-2 bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-2xl blur-md opacity-40 animate-pulse" />
-                <div className="relative h-16 w-16 bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center shadow-xl border border-white/20 transform transition-transform duration-300 hover:scale-105 hover:rotate-3">
-                  <BookOpen className="h-8 w-8 text-white" />
-                </div>
-              </div>
-
-              <span className="inline-flex items-center space-x-1.5 px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest bg-indigo-500/15 text-indigo-300 border border-indigo-400/20 mb-4 shadow-inner">
-                <Sparkles className="h-3 w-3 text-cyan-400" />
-                <span>AI-Powered Workspace</span>
-              </span>
-
-              <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-indigo-200 tracking-wider uppercase leading-tight">
-                GENERATOR PERANGKAT AJAR
-              </h2>
+        <div className="bg-slate-900/90 backdrop-blur-2xl py-10 px-6 sm:px-10 shadow-2xl rounded-3xl border border-white/10">
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="h-16 w-16 bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center shadow-xl border border-white/20 mb-4">
+              <BookOpen className="h-8 w-8 text-white" />
             </div>
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-wider uppercase">
+              GENERATOR PERANGKAT AJAR
+            </h2>
+          </div>
 
-            <form className="space-y-4" onSubmit={handleLogin}>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 ml-1">
-                  Email Pengguna (Penyimpanan Otomatis)
-                </label>
-                <div className="relative group/input">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-slate-400 group-focus-within/input:text-cyan-400 transition-colors" />
-                  </div>
-                  <input 
-                    type="email" 
-                    required
-                    value={email} 
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className="block w-full pl-12 pr-4 py-3.5 bg-slate-950/60 border border-slate-700/70 rounded-xl text-white placeholder-slate-500 text-sm font-medium focus:bg-slate-950/90 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-400 transition-all outline-none" 
-                    placeholder="nama@email.com"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1.5 ml-1">
-                  Data isian & dokumen otomatis tersimpan sesuai email Anda.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 ml-1">
-                  Username
-                </label>
-                <div className="relative group/input">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-400 transition-colors" />
-                  </div>
-                  <input 
-                    type="text" 
-                    required
-                    value={username} 
-                    onChange={(e) => {
-                      setUsername(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className="block w-full pl-12 pr-4 py-3.5 bg-slate-950/60 border border-slate-700/70 rounded-xl text-white placeholder-slate-500 text-sm font-medium focus:bg-slate-950/90 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-all outline-none" 
-                    placeholder="Masukkan username"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 ml-1">
-                  Password
-                </label>
-                <div className="relative group/input">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-400 transition-colors" />
-                  </div>
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    required
-                    value={password} 
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (error) setError('');
-                    }} 
-                    className="block w-full pl-12 pr-12 py-3.5 bg-slate-950/60 border border-slate-700/70 rounded-xl text-white placeholder-slate-500 text-sm font-medium focus:bg-slate-950/90 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-all outline-none" 
-                    placeholder="Masukkan password" 
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white focus:outline-none transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-                {error && (
-                  <div className="mt-3 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center space-x-2.5 text-xs font-medium text-rose-300">
-                    <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-3">
-                <button 
-                  type="submit" 
-                  className="w-full relative group/btn overflow-hidden flex justify-center items-center space-x-2 py-4 px-5 border border-white/10 rounded-xl shadow-xl shadow-indigo-600/30 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 hover:from-indigo-500 hover:via-blue-500 hover:to-cyan-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all transform active:scale-[0.98]"
+          <form className="space-y-4" onSubmit={handleLogin}>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">Email Pengguna</label>
+              <input 
+                type="email" 
+                required
+                value={email} 
+                onChange={(e) => { setEmail(e.target.value); if (error) setError(''); }}
+                className="block w-full px-4 py-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-cyan-500" 
+                placeholder="nama@email.com"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">Username</label>
+              <input 
+                type="text" 
+                required
+                value={username} 
+                onChange={(e) => { setUsername(e.target.value); if (error) setError(''); }}
+                className="block w-full px-4 py-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500" 
+                placeholder="Masukkan username"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">Password</label>
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  required
+                  value={password} 
+                  onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }} 
+                  className="block w-full px-4 pr-12 py-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500" 
+                  placeholder="Masukkan password" 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white"
                 >
-                  <span className="tracking-wide">MASUK KE APLIKASI</span>
-                  <ChevronRight className="h-4 w-4 transform group-hover/btn:translate-x-1 transition-transform" />
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
-            </form>
-          </div>
+              {error && (
+                <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-center space-x-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+            <div className="pt-2">
+              <button 
+                type="submit" 
+                className="w-full flex justify-center items-center space-x-2 py-4 px-5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-cyan-500 shadow-lg"
+              >
+                <span>MASUK KE APLIKASI</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -502,7 +445,6 @@ function Dashboard({ user, userEmail, onLogout }) {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const saveTimeoutRef = useRef(null);
   
-  // Shared State
   const [appData, setAppData] = useState({
     provinsiKota: 'Kota Administrasi Nusantara',
     dinas: 'Dinas Pendidikan',
@@ -522,8 +464,8 @@ function Dashboard({ user, userEmail, onLogout }) {
     kotaTanggal: 'Nusantara, 14 Juli 2026',
     
     elemenList: '1 | MNY | Menyimak - Berbicara\n2 | MBM | Membaca - Memirsa\n3 | MNL | Menulis - Mempresentasikan',
-    cpUmum: 'Mata pelajaran Bahasa Inggris pada Kurikulum Merdeka bertujuan untuk membekali peserta didik dengan kemampuan berkomunikasi secara efektif dan bermakna dalam konteks keseharian dan akademik...',
-    cpElemen: 'Elemen Menyimak - Berbicara: Peserta didik menggunakan bahasa Inggris untuk berinteraksi dan saling bertukar ide, pengalaman, minat, dan pendapat...\nElemen Membaca - Memirsa: Peserta didik membaca dan merespon teks familiar dan tidak familiar yang mengandung struktur yang telah dipelajari...',
+    cpUmum: 'Mata pelajaran Bahasa Inggris pada Kurikulum Merdeka bertujuan untuk membekali peserta didik dengan kemampuan berkomunikasi secara efektif dan bermakna...',
+    cpElemen: 'Elemen Menyimak - Berbicara: Peserta didik menggunakan bahasa Inggris untuk berinteraksi...\nElemen Membaca - Memirsa: Peserta didik membaca dan merespon teks familiar...',
     
     kalender: 'SEMESTER 1:\nJuli | 4 | 1 | MPLS\nAgustus | 4 | 1 | HUT RI\nSeptember | 4 | 1 | ANBK\nOktober | 5 | 0 | Efektif\nNovember | 4 | 0 | Efektif\nDesember | 4 | 3 | PAS & Libur\n\nSEMESTER 2:\nJanuari | 4 | 1 | Tahun Baru\nFebruari | 4 | 1 | Libur\nMaret | 5 | 1 | Nyepi\nApril | 4 | 2 | Idul Fitri\nMei | 4 | 1 | Libur Mei\nJuni | 5 | 2 | PAT & Libur',
     rentangNilai: 'Level 1 (Mulai Berkembang): 0-55 | D\nLevel 2 (Layak): 56-70 | C\nLevel 3 (Cakap): 71-85 | B\nLevel 4 (Mahir): 86-100 | A',
@@ -536,7 +478,6 @@ function Dashboard({ user, userEmail, onLogout }) {
     cp: '', tp: '', atp: '', prota: '', prosem1: '', prosem2: '', kktp: '', modul: ''
   });
   
-  // State Khusus Modul Ajar Dropdown - Terisi otomatis dari ATP
   const [extractedTPs, setExtractedTPs] = useState([]);
   const [selectedTPIndex, setSelectedTPIndex] = useState(0);
 
@@ -547,21 +488,19 @@ function Dashboard({ user, userEmail, onLogout }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
 
-  // Hitung persentase kelengkapan dokumen (7 dokumen utama)
   const docKeys = ['cp', 'tp', 'atp', 'prota', 'prosem1', 'prosem2', 'kktp', 'modul'];
   const completedCount = docKeys.filter(k => Boolean(generatedDocs[k])).length;
   const completionPercentage = Math.round((completedCount / docKeys.length) * 100);
 
-  // 1. Memuat data berdasarkan Email Pengguna saat masuk ke Dashboard
   useEffect(() => {
-    if (!user || !userEmail) return;
+    if (!userEmail) return;
     let isMounted = true;
 
     const loadUserWorkspace = async () => {
-      setSaveStatus('Memuat data akun...');
+      setSaveStatus('Memuat data...');
+      const emailKey = sanitizeEmailKey(userEmail);
+
       try {
-        const emailKey = sanitizeEmailKey(userEmail);
-        // Cek penyimpanan profil berbasis email
         const emailDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_workspaces', emailKey);
         const snap = await getDoc(emailDocRef);
 
@@ -574,11 +513,27 @@ function Dashboard({ user, userEmail, onLogout }) {
           }
           setSaveStatus('Tersimpan otomatis');
         } else {
-          setSaveStatus('Akun siap (Tersimpan otomatis)');
+          const localBackup = localStorage.getItem(`gm_workspace_${emailKey}`);
+          if (localBackup && isMounted) {
+            const parsed = JSON.parse(localBackup);
+            if (parsed.appData) setAppData(prev => ({ ...prev, ...parsed.appData }));
+            if (parsed.generatedDocs) setGeneratedDocs(prev => ({ ...prev, ...parsed.generatedDocs }));
+            if (parsed.extractedTPs) setExtractedTPs(parsed.extractedTPs);
+          }
+          setSaveStatus('Siap');
         }
       } catch (err) {
-        console.error("Gagal memuat data pengguna:", err);
-        if (isMounted) setSaveStatus('Mode Lokal Aktif');
+        console.warn("Memuat cadangan lokal:", err);
+        try {
+          const localBackup = localStorage.getItem(`gm_workspace_${emailKey}`);
+          if (localBackup && isMounted) {
+            const parsed = JSON.parse(localBackup);
+            if (parsed.appData) setAppData(prev => ({ ...prev, ...parsed.appData }));
+            if (parsed.generatedDocs) setGeneratedDocs(prev => ({ ...prev, ...parsed.generatedDocs }));
+            if (parsed.extractedTPs) setExtractedTPs(parsed.extractedTPs);
+          }
+        } catch {}
+        if (isMounted) setSaveStatus('Tersimpan di Perangkat');
       } finally {
         if (isMounted) setIsDataLoaded(true);
       }
@@ -586,39 +541,42 @@ function Dashboard({ user, userEmail, onLogout }) {
 
     loadUserWorkspace();
     return () => { isMounted = false; };
-  }, [user, userEmail]);
+  }, [userEmail]);
 
-  // 2. Menyimpan otomatis setiap ada perubahan pada appData, generatedDocs, atau extractedTPs
   useEffect(() => {
-    if (!user || !userEmail || !isDataLoaded) return;
+    if (!userEmail || !isDataLoaded) return;
 
-    setSaveStatus('Menyimpan perubahan...');
+    setSaveStatus('Menyimpan...');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
+      const emailKey = sanitizeEmailKey(userEmail);
+      const payload = {
+        email: userEmail,
+        appData,
+        generatedDocs,
+        extractedTPs,
+        updatedAt: Date.now()
+      };
+
       try {
-        const emailKey = sanitizeEmailKey(userEmail);
-        const payload = {
-          email: userEmail,
-          appData,
-          generatedDocs,
-          extractedTPs,
-          updatedAt: Date.now()
-        };
+        localStorage.setItem(`gm_workspace_${emailKey}`, JSON.stringify(payload));
+      } catch {}
 
-        // Simpan berdasarkan akun email pengguna & cadangan pada perangkat
+      try {
         const emailDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_workspaces', emailKey);
-        const deviceDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'workspaces', emailKey);
+        const promises = [setDoc(emailDocRef, payload, { merge: true })];
 
-        await Promise.all([
-          setDoc(emailDocRef, payload, { merge: true }),
-          setDoc(deviceDocRef, payload, { merge: true })
-        ]);
+        if (user && user.uid) {
+          const deviceDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'workspaces', emailKey);
+          promises.push(setDoc(deviceDocRef, payload, { merge: true }));
+        }
 
+        await Promise.all(promises);
         setSaveStatus('Tersimpan otomatis');
       } catch (err) {
-        console.error("Gagal menyimpan otomatis:", err);
-        setSaveStatus('Gagal menyimpan');
+        console.warn("Tersimpan ke penyimpanan lokal:", err);
+        setSaveStatus('Tersimpan (Lokal)');
       }
     }, 1000);
 
@@ -632,7 +590,6 @@ function Dashboard({ user, userEmail, onLogout }) {
     setAppData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Fungsi Parser HTML ATP untuk mengambil TP dan Materi secara otomatis
   const parseATPForModules = (atpHtmlString) => {
     try {
       const parser = new DOMParser();
@@ -640,13 +597,12 @@ function Dashboard({ user, userEmail, onLogout }) {
       const tables = doc.querySelectorAll('table');
       let tps = [];
       
-      // Cari tabel yang berisi Kode TP dan Tujuan
       tables.forEach(table => {
         const headerRow = table.querySelector('tr');
         if (headerRow && headerRow.textContent.toLowerCase().includes('kode tp')) {
           const rows = table.querySelectorAll('tr');
           rows.forEach((row, index) => {
-             if (index === 0) return; // skip header
+             if (index === 0) return;
              const cells = row.querySelectorAll('td');
              if (cells.length >= 7) {
                const kode = cells[1]?.textContent.trim();
@@ -672,22 +628,19 @@ function Dashboard({ user, userEmail, onLogout }) {
         }
       });
       
-      // Hapus duplikasi jika ada (berdasarkan kode)
       const uniqueTPs = Array.from(new Map(tps.map(item => [item.kode, item])).values());
-      
       if (uniqueTPs.length > 0) {
         setExtractedTPs(uniqueTPs);
         setSelectedTPIndex(0);
       }
     } catch (err) {
-      console.error("Gagal mem-parsing ATP:", err);
+      console.error("Gagal parsing ATP:", err);
     }
   };
 
   const handleGenerateGlobal = async () => {
     setIsGenerating(true);
     setErrorMsg('');
-    
     let currentData = { ...appData };
 
     try {
@@ -704,8 +657,6 @@ function Dashboard({ user, userEmail, onLogout }) {
       const atp = await generateWithAI(COMMON_RULES, getPromptATP(currentData));
       setGeneratedDocs(prev => ({ ...prev, atp }));
       currentData.dataSebelumnya = atp;
-      
-      // Otomatis Ekstrak TP dan Materi dari ATP
       parseATPForModules(atp);
 
       setProgressMsg('4/6: Menghitung Program Tahunan (Prota)...');
@@ -723,19 +674,18 @@ function Dashboard({ user, userEmail, onLogout }) {
       const kktp = await generateWithAI(COMMON_RULES, getPromptKKTP(currentData));
       setGeneratedDocs(prev => ({ ...prev, kktp }));
 
-      setProgressMsg('Selesai! Dokumen 1-6 dibuat. Daftar TP dan Materi telah otomatis dikirim ke Tab Modul Ajar.');
+      setProgressMsg('Selesai!');
       setTimeout(() => {
          setProgressMsg('');
          setActiveTab('cp');
-      }, 4000);
+      }, 3000);
     } catch (err) {
-      setErrorMsg(`Terjadi kegagalan pada proses: ${progressMsg}. Error: ${err.message}`);
+      setErrorMsg(`Terjadi kesalahan: ${err.message}`);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // Fungsi untuk memperbarui 1 dokumen spesifik saja tanpa mengulang semua
   const handleRegenerateSingleDoc = async (docId) => {
     setIsGenerating(true);
     setErrorMsg('');
@@ -743,44 +693,37 @@ function Dashboard({ user, userEmail, onLogout }) {
 
     try {
       if (docId === 'cp') {
-        setProgressMsg('Memperbarui Analisis CP...');
         const cp = await generateWithAI(COMMON_RULES, getPromptAnalisisCP(currentData));
         setGeneratedDocs(prev => ({ ...prev, cp }));
       } else if (docId === 'tp') {
-        setProgressMsg('Memperbarui Tujuan Pembelajaran (TP)...');
         const tp = await generateWithAI(COMMON_RULES, getPromptTP(currentData));
         setGeneratedDocs(prev => ({ ...prev, tp }));
       } else if (docId === 'atp') {
-        setProgressMsg('Memperbarui Alur Tujuan Pembelajaran (ATP)...');
         currentData.dataSebelumnya = generatedDocs.tp || '';
         const atp = await generateWithAI(COMMON_RULES, getPromptATP(currentData));
         setGeneratedDocs(prev => ({ ...prev, atp }));
         parseATPForModules(atp);
       } else if (docId === 'prota') {
-        setProgressMsg('Memperbarui Program Tahunan (Prota)...');
         currentData.dataSebelumnya = generatedDocs.atp || '';
         const prota = await generateWithAI(COMMON_RULES, getPromptProta(currentData));
         setGeneratedDocs(prev => ({ ...prev, prota }));
       } else if (docId === 'prosem1') {
-        setProgressMsg('Memperbarui Program Semester 1...');
         currentData.dataSebelumnya = generatedDocs.prota || '';
         const prosem1 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '1 (Ganjil)'));
         setGeneratedDocs(prev => ({ ...prev, prosem1 }));
       } else if (docId === 'prosem2') {
-        setProgressMsg('Memperbarui Program Semester 2...');
         currentData.dataSebelumnya = generatedDocs.prota || '';
         const prosem2 = await generateWithAI(COMMON_RULES, getPromptProsem(currentData, '2 (Genap)'));
         setGeneratedDocs(prev => ({ ...prev, prosem2 }));
       } else if (docId === 'kktp') {
-        setProgressMsg('Memperbarui KKTP...');
         currentData.dataSebelumnya = generatedDocs.atp || '';
         const kktp = await generateWithAI(COMMON_RULES, getPromptKKTP(currentData));
         setGeneratedDocs(prev => ({ ...prev, kktp }));
       }
-      setProgressMsg('Dokumen berhasil diperbarui!');
-      setTimeout(() => setProgressMsg(''), 2500);
+      setProgressMsg('Berhasil diperbarui!');
+      setTimeout(() => setProgressMsg(''), 2000);
     } catch (err) {
-      setErrorMsg(`Gagal memperbarui dokumen: ${err.message}`);
+      setErrorMsg(`Gagal: ${err.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -792,13 +735,12 @@ function Dashboard({ user, userEmail, onLogout }) {
     setErrorMsg('');
     const targetTP = extractedTPs[selectedTPIndex];
     try {
-      setProgressMsg(`Menyusun Modul Ajar Presisi untuk TP: ${targetTP.kode}...`);
       const modul = await generateWithAI(COMMON_RULES, getPromptModul(appData, targetTP));
       setGeneratedDocs(prev => ({ ...prev, modul }));
-      setProgressMsg('Modul Ajar Berhasil Dibuat!');
-      setTimeout(() => setProgressMsg(''), 3000);
+      setProgressMsg('Modul Berhasil Dibuat!');
+      setTimeout(() => setProgressMsg(''), 2500);
     } catch (err) {
-      setErrorMsg(`Gagal membuat Modul Ajar: ${err.message}`);
+      setErrorMsg(`Gagal: ${err.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -806,44 +748,22 @@ function Dashboard({ user, userEmail, onLogout }) {
 
   const handleDownloadWord = () => {
     const isLandscape = ['prosem1', 'prosem2', 'atp', 'kktp'].includes(activeTab);
-    
-    // Injecting Microsoft Word XML namespaces and Page orientation CSS
     const header = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' 
             xmlns:w='urn:schemas-microsoft-com:office:word' 
             xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset='utf-8'>
-        <title>Export Doc</title>
-        <style>
-          body { font-family: 'Calibri', 'Arial', sans-serif; font-size: 11pt; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; border: 1pt solid windowtext; }
-          th, td { border: 1pt solid windowtext; padding: 5pt; vertical-align: top; }
-          th { background-color: #1a3a5c; color: white; }
-          h1, h2, h3 { color: #1a3a5c; }
-          
-          /* Kertas A4 Portrait */
-          @page WordSectionPortrait {
-              size: 595.3pt 841.9pt; 
-              margin: 72pt 72pt 72pt 72pt;
-              mso-header-margin: 36pt;
-              mso-footer-margin: 36pt;
-              mso-paper-source: 0;
-          }
-          /* Kertas A4 Landscape */
-          @page WordSectionLandscape {
-              size: 841.9pt 595.3pt; 
-              margin: 72pt 72pt 72pt 72pt;
-              mso-header-margin: 36pt;
-              mso-footer-margin: 36pt;
-              mso-paper-source: 0;
-          }
-          div.WordSectionPortrait { page: WordSectionPortrait; }
-          div.WordSectionLandscape { page: WordSectionLandscape; }
-        </style>
-      </head>
-      <body>
-        <div class="${isLandscape ? 'WordSectionLandscape' : 'WordSectionPortrait'}">
+      <head><meta charset='utf-8'><title>Doc</title>
+      <style>
+        body { font-family: 'Calibri', sans-serif; font-size: 11pt; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; border: 1pt solid windowtext; }
+        th, td { border: 1pt solid windowtext; padding: 5pt; vertical-align: top; }
+        th { background-color: #1a3a5c; color: white; }
+        @page WordSectionPortrait { size: 595.3pt 841.9pt; margin: 72pt; }
+        @page WordSectionLandscape { size: 841.9pt 595.3pt; margin: 72pt; }
+        div.WordSectionPortrait { page: WordSectionPortrait; }
+        div.WordSectionLandscape { page: WordSectionLandscape; }
+      </style></head>
+      <body><div class="${isLandscape ? 'WordSectionLandscape' : 'WordSectionPortrait'}">
     `;
     const footer = "</div></body></html>";
     const htmlContent = header + generatedDocs[activeTab] + footer;
@@ -852,7 +772,7 @@ function Dashboard({ user, userEmail, onLogout }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ADM_${activeTab.toUpperCase()}_${appData.singkatan}_${appData.fase.split('/')[0].trim()}.doc`;
+    a.download = `ADM_${activeTab.toUpperCase()}_${appData.singkatan}.doc`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -860,8 +780,7 @@ function Dashboard({ user, userEmail, onLogout }) {
   };
 
   const handleDownloadHTML = () => {
-    const isLandscape = ['prosem1', 'prosem2', 'atp', 'kktp'].includes(activeTab);
-    const htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dokumen_${activeTab}</title><style>body { font-family: Calibri, sans-serif; padding: 2cm; } table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; border: 1px solid black; } th, td { border: 1px solid black; padding: 0.5rem; text-align: left; vertical-align: top; } th { background-color: #1a3a5c !important; color: white !important; font-weight: bold; -webkit-print-color-adjust: exact; print-color-adjust: exact; } h1, h2, h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1a3a5c; } @media print { @page { size: A4 ${isLandscape ? 'landscape' : 'portrait'}; margin: 1.5cm; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } } </style></head><body>${generatedDocs[activeTab]}</body></html>`;
+    const htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: Calibri, sans-serif; padding: 2cm; } table { width: 100%; border-collapse: collapse; border: 1px solid black; } th, td { border: 1px solid black; padding: 0.5rem; text-align: left; vertical-align: top; } th { background-color: #1a3a5c !important; color: white !important; }</style></head><body>${generatedDocs[activeTab]}</body></html>`;
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -876,23 +795,19 @@ function Dashboard({ user, userEmail, onLogout }) {
 
     setIsDownloadingPDF(true);
     const isLandscape = ['prosem1', 'prosem2', 'atp', 'kktp'].includes(activeTab);
-    const fileName = `ADM_${activeTab.toUpperCase()}_${appData.singkatan}_${appData.fase.split('/')[0].trim()}.pdf`;
+    const fileName = `ADM_${activeTab.toUpperCase()}.pdf`;
 
     const generatePDF = () => {
       const container = document.createElement('div');
       container.style.padding = '10px';
-      container.style.fontFamily = "'Calibri', 'Arial', sans-serif";
+      container.style.fontFamily = "'Calibri', sans-serif";
       container.style.fontSize = '10.5pt';
-      container.style.color = '#000';
       container.style.background = '#fff';
       container.innerHTML = `
         <style>
-          table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; border: 1pt solid #000; page-break-inside: auto; }
-          tr { page-break-inside: avoid; page-break-after: auto; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; border: 1pt solid #000; }
           th, td { border: 1pt solid #000; padding: 5pt; text-align: left; vertical-align: top; }
-          th { background-color: #1a3a5c !important; color: white !important; font-weight: bold; }
-          h1, h2, h3 { color: #1a3a5c; margin-top: 12pt; margin-bottom: 6pt; }
-          .header-kop { text-align: center; border-bottom: 2.5px solid black; padding-bottom: 10px; margin-bottom: 20px; }
+          th { background-color: #1a3a5c !important; color: white !important; }
         </style>
         ${content}
       `;
@@ -901,22 +816,13 @@ function Dashboard({ user, userEmail, onLogout }) {
         margin: 12,
         filename: fileName,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: isLandscape ? 'landscape' : 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: isLandscape ? 'landscape' : 'portrait' }
       };
 
-      window.html2pdf()
-        .set(opt)
-        .from(container)
-        .save()
-        .then(() => {
-          setIsDownloadingPDF(false);
-        })
-        .catch((err) => {
-          console.error('Gagal mengunduh PDF:', err);
-          setIsDownloadingPDF(false);
-        });
+      window.html2pdf().set(opt).from(container).save()
+        .then(() => setIsDownloadingPDF(false))
+        .catch(() => setIsDownloadingPDF(false));
     };
 
     if (window.html2pdf) {
@@ -925,83 +831,77 @@ function Dashboard({ user, userEmail, onLogout }) {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
       script.onload = () => generatePDF();
-      script.onerror = () => {
-        setIsDownloadingPDF(false);
-        window.print();
-      };
+      script.onerror = () => { setIsDownloadingPDF(false); window.print(); };
       document.body.appendChild(script);
     }
   };
 
   const tabs = [
-    { id: 'identitas', icon: Settings, label: 'Data Global (Input)', badge: 'Master' },
-    { id: 'cp', icon: FileText, label: '1. Analisis CP', orientation: 'Portrait' },
-    { id: 'tp', icon: Layout, label: '2. Tujuan Pemb. (TP)', orientation: 'Portrait' },
-    { id: 'atp', icon: ChevronRight, label: '3. Alur (ATP)', orientation: 'Landscape' },
-    { id: 'prota', icon: Calendar, label: '4. Prota', orientation: 'Portrait' },
-    { id: 'prosem1', icon: Calendar, label: '5a. Prosem Sem 1', orientation: 'Landscape' },
-    { id: 'prosem2', icon: Calendar, label: '5b. Prosem Sem 2', orientation: 'Landscape' },
-    { id: 'kktp', icon: CheckCircle2, label: '6. KKTP', orientation: 'Landscape' },
-    { id: 'modul', icon: BookOpen, label: '7. Modul Ajar', orientation: 'Portrait' },
+    { id: 'identitas', icon: Settings, label: 'Data Global (Input)' },
+    { id: 'cp', icon: FileText, label: '1. Analisis CP' },
+    { id: 'tp', icon: Layout, label: '2. Tujuan Pemb. (TP)' },
+    { id: 'atp', icon: ChevronRight, label: '3. Alur (ATP)' },
+    { id: 'prota', icon: Calendar, label: '4. Prota' },
+    { id: 'prosem1', icon: Calendar, label: '5a. Prosem Sem 1' },
+    { id: 'prosem2', icon: Calendar, label: '5b. Prosem Sem 2' },
+    { id: 'kktp', icon: CheckCircle2, label: '6. KKTP' },
+    { id: 'modul', icon: BookOpen, label: '7. Modul Ajar' },
   ];
 
   const currentTabObj = tabs.find(t => t.id === activeTab);
   const isCurrentLandscape = ['prosem1', 'prosem2', 'atp', 'kktp'].includes(activeTab);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 flex flex-col md:flex-row selection:bg-indigo-600 selection:text-white">
-      {/* Mobile Backdrop Overlay */}
+    <div className="fixed inset-0 w-full h-full bg-slate-100 font-sans text-slate-900 flex overflow-hidden">
+      {/* Mobile Drawer Backdrop */}
       {mobileMenuOpen && (
         <div 
           onClick={() => setMobileMenuOpen(false)} 
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-30 md:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 md:hidden"
         />
       )}
 
-      {/* Modern Dark Sidebar (Desktop & Mobile Drawer) */}
-      <aside className={`fixed md:static inset-y-0 left-0 w-72 bg-[#0B1120] text-slate-300 flex-shrink-0 flex flex-col print:hidden no-print shadow-2xl z-40 transform transition-transform duration-300 ease-in-out ${
+      {/* Sidebar - Fixed/Responsive Drawer */}
+      <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-72 bg-[#0B1120] text-slate-300 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
-        <div className="p-6 border-b border-slate-800/80 flex items-center justify-between">
-          <div className="flex items-center space-x-3.5 overflow-hidden">
-            <div className="h-10 w-10 bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0 border border-white/15">
-              <BookOpen className="h-5 w-5 text-white" />
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-3 overflow-hidden">
+            <div className="h-9 w-9 bg-gradient-to-tr from-indigo-600 to-cyan-500 rounded-xl flex items-center justify-center shrink-0">
+              <BookOpen className="h-4 w-4 text-white" />
             </div>
             <div className="overflow-hidden">
-              <h1 className="font-extrabold text-white text-base tracking-tight">GuruMerdeka AI</h1>
-              <p className="text-xs text-cyan-400 font-medium truncate">Workspace Pengajar</p>
+              <h1 className="font-extrabold text-white text-sm truncate">GuruMerdeka AI</h1>
+              <p className="text-[10px] text-cyan-400 font-medium truncate">{appData.guru}</p>
             </div>
           </div>
           <button 
             onClick={() => setMobileMenuOpen(false)} 
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            className="md:hidden p-1.5 text-slate-400 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Progress Tracker Widget */}
-        <div className="mx-4 mt-4 p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-inner">
-          <div className="flex items-center justify-between text-xs mb-2">
-            <span className="font-bold text-slate-300 flex items-center gap-1.5">
+        {/* Progres Kelengkapan */}
+        <div className="mx-3 mt-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="font-bold text-slate-300 flex items-center gap-1">
               <FileCheck className="h-3.5 w-3.5 text-indigo-400" />
-              Kelengkapan Dokumen
+              Kelengkapan
             </span>
-            <span className="font-extrabold text-cyan-400">{completedCount}/{docKeys.length}</span>
+            <span className="font-bold text-cyan-400">{completedCount}/{docKeys.length}</span>
           </div>
-          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-400 rounded-full transition-all duration-500"
+              className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-300"
               style={{ width: `${completionPercentage}%` }}
             />
           </div>
         </div>
-        
-        <div className="px-4 pt-5 pb-2">
-          <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 px-3">Tahapan Perangkat Ajar</p>
-        </div>
 
-        <nav className="flex-1 px-3.5 space-y-1 overflow-y-auto custom-scrollbar">
+        {/* Navigation Menu (Scrollable) */}
+        <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto custom-scrollbar">
           {tabs.map(tab => {
             const isActive = activeTab === tab.id;
             const isDone = Boolean(generatedDocs[tab.id]);
@@ -1012,362 +912,233 @@ function Dashboard({ user, userEmail, onLogout }) {
                   setActiveTab(tab.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
                   isActive 
-                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-600/25 font-semibold' 
-                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md' 
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 }`}
               >
                 <div className="flex items-center space-x-3 truncate">
-                  <tab.icon className={`h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-white' : isDone ? 'text-emerald-400' : 'text-slate-500'}`} />
+                  <tab.icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : isDone ? 'text-emerald-400' : 'text-slate-500'}`} />
                   <span className="truncate">{tab.label}</span>
                 </div>
-                {tab.id === 'identitas' ? (
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                    Input
-                  </span>
-                ) : isDone ? (
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full shrink-0 ${isActive ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'}`}>
-                    <Check className="h-3 w-3 stroke-[2.5]" />
-                  </span>
-                ) : (
-                  <span className="h-2 w-2 rounded-full bg-slate-800 group-hover:bg-slate-700 shrink-0 mr-1.5" />
+                {isDone && tab.id !== 'identitas' && (
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                 )}
               </button>
             );
           })}
         </nav>
-        
-        <div className="p-3.5 m-3.5 rounded-2xl bg-slate-900/90 border border-slate-800/80">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center text-cyan-300 font-extrabold text-xs uppercase shrink-0">
-              <School className="h-4 w-4 text-cyan-400" />
-            </div>
-            <div className="overflow-hidden flex-1">
-              <p className="text-xs font-bold text-white truncate" title={appData.sekolah}>{appData.sekolah}</p>
-              <p className="text-[11px] text-slate-400 truncate mt-0.5">Aktif Sesi Selesai</p>
-            </div>
+
+        {/* Footer Sidebar */}
+        <div className="p-3 m-3 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+          <div className="flex items-center space-x-2.5 mb-2 overflow-hidden">
+            <School className="h-4 w-4 text-cyan-400 shrink-0" />
+            <p className="text-xs font-bold text-white truncate">{appData.sekolah}</p>
           </div>
           <button 
             onClick={onLogout} 
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl transition-all"
+            className="w-full flex items-center justify-center space-x-1.5 py-2 text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg transition-colors"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span>Keluar</span>
+            <span>Keluar Aplikasi</span>
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative bg-[#F8FAFC]">
-        {/* Top Glass Header */}
-        <header className="bg-white/85 backdrop-blur-xl border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap justify-between items-center gap-3 print:hidden no-print z-20 sticky top-0 shadow-xs">
-          <div className="flex items-center space-x-3">
+      {/* Main Content Area (Full Screen Flex Layout) */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden bg-slate-100">
+        {/* Header Bar */}
+        <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex justify-between items-center z-10 shrink-0">
+          <div className="flex items-center space-x-3 overflow-hidden">
             <button 
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              className="md:hidden p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex items-center space-x-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-indigo-600 ring-4 ring-indigo-600/15"></span>
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">{currentTabObj?.label}</h2>
-              {currentTabObj?.orientation && (
-                <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                  A4 {currentTabObj.orientation}
-                </span>
-              )}
+            <div className="overflow-hidden">
+              <h2 className="text-sm sm:text-base font-bold text-slate-800 truncate">{currentTabObj?.label}</h2>
             </div>
           </div>
 
-          {/* Indikator Penyimpanan Otomatis */}
-          <div className="flex items-center space-x-2.5 bg-slate-100/80 border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600">
-            <div className="flex items-center space-x-1.5">
-              {saveStatus.includes('Menyimpan') || saveStatus.includes('Memuat') ? (
-                <Loader2 className="h-3.5 w-3.5 text-indigo-600 animate-spin" />
-              ) : (
-                <Cloud className="h-3.5 w-3.5 text-emerald-600" />
-              )}
-              <span className="font-semibold text-slate-700">{saveStatus}</span>
-            </div>
+          <div className="flex items-center space-x-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 shrink-0">
+            {saveStatus.includes('Menyimpan') || saveStatus.includes('Memuat') ? (
+              <Loader2 className="h-3.5 w-3.5 text-indigo-600 animate-spin shrink-0" />
+            ) : (
+              <Cloud className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            )}
+            <span className="truncate">{saveStatus}</span>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 print:p-0 print:bg-white flex flex-col relative custom-scrollbar">
+        {/* Scrollable Viewport Content */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 custom-scrollbar relative">
           
-          {/* TAB 1: FORM DATA GLOBAL */}
+          {/* TAB 1: DATA GLOBAL INPUT */}
           {activeTab === 'identitas' && (
-            <div className="max-w-5xl mx-auto w-full bg-white rounded-3xl shadow-sm border border-slate-200/80 flex flex-col print:hidden no-print overflow-hidden">
-              {/* Hero Banner Card */}
-              <div className="p-6 lg:p-8 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
-                <div className="absolute -right-10 -top-10 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative z-10">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-400/20 px-3 py-1 rounded-full mb-2.5">
-                    <Sparkles className="h-3 w-3" /> Konfigurasi Master 1 Tahun
-                  </span>
-                  <h3 className="font-black text-white text-xl sm:text-2xl tracking-tight">Input Data Global Perangkat Ajar</h3>
-                  <p className="text-sm text-slate-300 mt-1 max-w-2xl">Lengkapi identitas satuan pendidikan dan elemen CP. AI akan merumuskan TP, ATP, Prota, Prosem, hingga KKTP secara otomatis dan terintegrasi.</p>
-                </div>
-                <div className="relative z-10 flex items-center space-x-3 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15 shrink-0 self-start sm:self-center">
-                  <div className="h-9 w-9 rounded-xl bg-cyan-400/20 flex items-center justify-center text-cyan-300 font-black text-sm">
-                    {completionPercentage}%
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">Status Dokumen</p>
-                    <p className="text-[11px] text-slate-300">{completedCount} dari {docKeys.length} Selesai</p>
-                  </div>
-                </div>
+            <div className="max-w-4xl mx-auto w-full bg-white rounded-2xl shadow-sm border border-slate-200 mb-12">
+              <div className="p-5 sm:p-6 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
+                <h3 className="font-bold text-slate-800 text-base sm:text-lg">Input Data Global Perangkat Ajar</h3>
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Lengkapi data di bawah ini untuk digenerate ke seluruh perangkat ajar.</p>
               </div>
               
-              <div className="p-6 lg:p-8 space-y-10 flex-1">
-                {/* Section 1 */}
-                <section className="bg-slate-50/60 p-5 sm:p-6 rounded-2xl border border-slate-200/70">
-                  <div className="flex items-center space-x-3 border-b border-slate-200/80 pb-4 mb-6">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-sm shadow-sm shadow-indigo-600/20">1</span>
-                    <div>
-                      <h4 className="font-extrabold text-slate-800 text-base">Identitas Satuan Pendidikan & Pendidik</h4>
-                      <p className="text-xs text-slate-500">Data ini digunakan untuk Kop Surat dan lembar pengesahan tanda tangan di akhir dokumen.</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    <Input name="provinsiKota" label="Provinsi / Kabupaten / Kota" val={appData.provinsiKota} onChange={handleChange} />
-                    <Input name="dinas" label="Instansi / Dinas Pendidikan" val={appData.dinas} onChange={handleChange} />
-                    <Input name="sekolah" label="Nama Satuan Pendidikan" val={appData.sekolah} onChange={handleChange} />
-                    <Input name="alamat" label="Alamat Lengkap Sekolah" val={appData.alamat} onChange={handleChange} />
+              <div className="p-4 sm:p-6 space-y-6">
+                <section>
+                  <h4 className="font-bold text-indigo-900 border-b border-slate-200 pb-2 mb-4 text-sm">1. Identitas Sekolah & Guru</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Input name="provinsiKota" label="Provinsi / Kota" val={appData.provinsiKota} onChange={handleChange} />
+                    <Input name="dinas" label="Dinas Pendidikan" val={appData.dinas} onChange={handleChange} />
+                    <Input name="sekolah" label="Satuan Pendidikan" val={appData.sekolah} onChange={handleChange} />
+                    <Input name="alamat" label="Alamat Sekolah" val={appData.alamat} onChange={handleChange} />
                     <Input name="mapel" label="Mata Pelajaran" val={appData.mapel} onChange={handleChange} />
-                    <Input name="singkatan" label="Kode / Singkatan Mapel" val={appData.singkatan} onChange={handleChange} />
+                    <Input name="singkatan" label="Singkatan Mapel" val={appData.singkatan} onChange={handleChange} />
                     <Input name="fase" label="Fase / Kelas" val={appData.fase} onChange={handleChange} />
                     <Input name="tahun" label="Tahun Pelajaran" val={appData.tahun} onChange={handleChange} />
-                    <Input name="alokasiWaktu" label="Total Alokasi Waktu 1 Tahun" val={appData.alokasiWaktu} onChange={handleChange} />
-                    <Input name="jpMinggu" label="Alokasi JP per Minggu" val={appData.jpMinggu} onChange={handleChange} />
+                    <Input name="alokasiWaktu" label="Alokasi Waktu Total" val={appData.alokasiWaktu} onChange={handleChange} />
+                    <Input name="jpMinggu" label="JP per Minggu" val={appData.jpMinggu} onChange={handleChange} />
                     <Input name="jpPertemuan" label="Durasi 1x Pertemuan" val={appData.jpPertemuan} onChange={handleChange} placeholder="Contoh: 2 JP (80 Menit)" />
-                    <Input name="kotaTanggal" label="Tempat, Tanggal Pengesahan" val={appData.kotaTanggal} onChange={handleChange} />
-                    <Input name="guru" label="Nama Lengkap Guru" val={appData.guru} onChange={handleChange} />
+                    <Input name="kotaTanggal" label="Kota, Tanggal TTD" val={appData.kotaTanggal} onChange={handleChange} />
+                    <Input name="guru" label="Nama Guru" val={appData.guru} onChange={handleChange} />
                     <Input name="nipGuru" label="NIP Guru" val={appData.nipGuru} onChange={handleChange} />
-                    <Input name="kepsek" label="Nama Kepala Sekolah" val={appData.kepsek} onChange={handleChange} />
-                    <Input name="nipKepsek" label="NIP Kepala Sekolah" val={appData.nipKepsek} onChange={handleChange} />
+                    <Input name="kepsek" label="Nama Kepsek" val={appData.kepsek} onChange={handleChange} />
+                    <Input name="nipKepsek" label="NIP Kepsek" val={appData.nipKepsek} onChange={handleChange} />
                   </div>
                 </section>
 
-                {/* Section 2 */}
-                <section className="bg-slate-50/60 p-5 sm:p-6 rounded-2xl border border-slate-200/70">
-                  <div className="flex items-center space-x-3 border-b border-slate-200/80 pb-4 mb-6">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-sm shadow-sm shadow-indigo-600/20">2</span>
+                <section>
+                  <h4 className="font-bold text-indigo-900 border-b border-slate-200 pb-2 mb-4 text-sm">Masukkan Capaian Pembelajaran (CP) & Elemen (dibawah adalah contoh)</h4>
+                  <div className="space-y-4">
                     <div>
-                      <h4 className="font-extrabold text-slate-800 text-base">Masukkan Capaian Pembelajaran (CP) & Elemen (dibawah adalah contoh)</h4>
-                      <p className="text-xs text-slate-500">Salin dan tempelkan teks CP terbaru sesuai SK BSKAP untuk mata pelajaran Anda.</p>
-                    </div>
-                  </div>
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Daftar Elemen & Kode</label>
-                      <textarea name="elemenList" rows={3} value={appData.elemenList} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-200 border p-3.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none shadow-2xs" />
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Daftar Elemen & Kode</label>
+                      <textarea name="elemenList" rows={3} value={appData.elemenList} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-300 border p-3 bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Masukkan CP Umum / Rasional Mata Pelajaran (di bawah adalah contoh)</label>
-                      <textarea name="cpUmum" rows={3} value={appData.cpUmum} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-200 border p-3.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none shadow-2xs" />
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Masukkan CP Umum / Rasional Mata Pelajaran (di bawah adalah contoh)</label>
+                      <textarea name="cpUmum" rows={3} value={appData.cpUmum} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-300 border p-3 bg-white outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Masukkan Capaian Pembelajaran (CP) Per Elemen (dibawah adalah contoh)</label>
-                      <textarea name="cpElemen" rows={5} value={appData.cpElemen} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-200 border p-3.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none shadow-2xs" />
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Masukkan Capaian Pembelajaran (CP) Per Elemen (dibawah adalah contoh)</label>
+                      <textarea name="cpElemen" rows={5} value={appData.cpElemen} onChange={handleChange} className="w-full text-sm rounded-xl border-slate-300 border p-3 bg-white outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
                   </div>
                 </section>
 
-                {/* Section 3 */}
-                <section className="bg-slate-50/60 p-5 sm:p-6 rounded-2xl border border-slate-200/70">
-                  <div className="flex items-center space-x-3 border-b border-slate-200/80 pb-4 mb-6">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-sm shadow-sm shadow-indigo-600/20">3</span>
+                <section>
+                  <h4 className="font-bold text-indigo-900 border-b border-slate-200 pb-2 mb-4 text-sm">3. Kalender & KKTP</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <h4 className="font-extrabold text-slate-800 text-base">Kalender Pendidikan & Parameter KKTP</h4>
-                      <p className="text-xs text-slate-500">Digunakan untuk perhitungan minggu efektif otomatis pada Prota, Prosem, dan interval nilai KKTP.</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Kalender Pendidikan 1 Tahun</label>
-                      <textarea name="kalender" rows={6} value={appData.kalender} onChange={handleChange} className="w-full text-sm font-mono rounded-xl border-slate-200 border p-3.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none shadow-2xs" />
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Kalender Pendidikan 1 Tahun</label>
+                      <textarea name="kalender" rows={6} value={appData.kalender} onChange={handleChange} className="w-full text-xs font-mono rounded-xl border-slate-300 border p-3 bg-slate-50 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Rentang Nilai & Predikat KKTP</label>
-                      <textarea name="rentangNilai" rows={6} value={appData.rentangNilai} onChange={handleChange} className="w-full text-sm font-mono rounded-xl border-slate-200 border p-3.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none shadow-2xs" />
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Rentang Nilai & Predikat KKTP</label>
+                      <textarea name="rentangNilai" rows={6} value={appData.rentangNilai} onChange={handleChange} className="w-full text-xs font-mono rounded-xl border-slate-300 border p-3 bg-slate-50 outline-none" />
                     </div>
                   </div>
                 </section>
               </div>
               
-              {/* Sticky Action Footer */}
-              <div className="p-5 sm:p-6 border-t border-slate-200/80 bg-white/95 flex flex-col items-center sticky bottom-0 z-20 backdrop-blur-md">
-                {progressMsg && activeTab === 'identitas' && (
-                  <div className="w-full max-w-2xl mb-4 px-4 py-3.5 bg-indigo-50 text-indigo-950 rounded-2xl text-sm font-bold flex items-center justify-center space-x-3 border border-indigo-200 shadow-sm">
-                    <Loader2 className="animate-spin h-5 w-5 text-indigo-600 shrink-0" />
+              <div className="p-4 sm:p-6 border-t border-slate-200 bg-slate-50 rounded-b-2xl sticky bottom-0 z-10">
+                {progressMsg && (
+                  <div className="mb-3 px-4 py-3 bg-indigo-100 text-indigo-950 rounded-xl text-xs font-bold flex items-center justify-center space-x-2">
+                    <Loader2 className="animate-spin h-4 w-4" />
                     <span>{progressMsg}</span>
                   </div>
                 )}
-                {errorMsg && activeTab === 'identitas' && (
-                  <div className="w-full max-w-2xl mb-4 px-4 py-3.5 bg-rose-50 text-rose-900 rounded-2xl text-sm font-bold flex items-center justify-center space-x-3 border border-rose-200">
-                    <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
+                {errorMsg && (
+                  <div className="mb-3 px-4 py-3 bg-rose-100 text-rose-950 rounded-xl text-xs font-bold flex items-center justify-center space-x-2">
+                    <AlertCircle className="h-4 w-4" />
                     <span>{errorMsg}</span>
                   </div>
                 )}
                 <button 
                   onClick={handleGenerateGlobal} 
                   disabled={isGenerating} 
-                  className="w-full sm:w-2/3 max-w-xl flex justify-center items-center space-x-2.5 py-4 px-6 border border-transparent rounded-2xl shadow-xl shadow-indigo-600/25 text-base font-extrabold text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 hover:from-indigo-500 hover:via-blue-500 hover:to-cyan-400 focus:outline-none disabled:opacity-50 transition-all transform active:scale-[0.99]"
+                  className="w-full flex justify-center items-center space-x-2 py-3.5 px-6 rounded-xl text-sm font-bold text-white bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 shadow-lg transition-all"
                 >
-                  {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-                  <span>{isGenerating ? 'AI Sedang Menyusun Dokumen 1-6...' : 'Generate Dokumen 1 s.d. 6 Sekaligus'}</span>
+                  {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  <span>{isGenerating ? 'Sedang Memproses Dokumen...' : 'Generate Dokumen 1 s.d. 6 Sekaligus'}</span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* TAB MODUL AJAR (KHUSUS) */}
+          {/* TAB MODUL AJAR */}
           {activeTab === 'modul' && (
-            <div className="w-full flex flex-col items-center print:hidden no-print pb-12">
-              
-              {/* Konfigurasi Modul Ajar (Dropdown) */}
-              <div className="w-full max-w-5xl bg-white border border-slate-200/80 rounded-3xl shadow-sm mb-6 p-6 lg:p-8 shrink-0">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-5 border-b border-slate-100">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full mb-2">
-                      <Layers className="h-3.5 w-3.5" /> Desain Pembelajaran Mendalam
-                    </span>
-                    <h3 className="font-extrabold text-slate-800 text-xl">Generator Modul Ajar Presisi (Deep Learning)</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">Pilih Tujuan Pembelajaran (TP). Materi pokok dan alokasi pertemuan otomatis ditarik dari tabel ATP.</p>
-                  </div>
-                </div>
+            <div className="max-w-4xl mx-auto w-full flex flex-col items-center pb-16">
+              <div className="w-full bg-white border border-slate-200 rounded-2xl shadow-sm mb-6 p-5 sm:p-6">
+                <h3 className="font-bold text-slate-800 text-base sm:text-lg mb-1">Modul Ajar</h3>
+                <p className="text-xs sm:text-sm text-slate-500 mb-4">Pilih Tujuan Pembelajaran untuk merancang modul.</p>
                 
                 {extractedTPs.length === 0 ? (
-                  <div className="bg-amber-50/90 border border-amber-200 text-amber-900 p-5 rounded-2xl text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                    <div className="flex items-start space-x-3.5">
-                      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="font-bold">Daftar TP Belum Tersedia dari ATP</p>
-                        <p className="text-amber-800/90 text-xs sm:text-sm">Silakan jalankan <strong>Generate Dokumen 1 s.d. 6</strong> di menu Data Global terlebih dahulu agar daftar TP terisi otomatis.</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setActiveTab('identitas')} 
-                      className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shrink-0 transition-colors self-start sm:self-center"
-                    >
-                      Buka Data Global
-                    </button>
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-xl text-xs sm:text-sm mb-4">
+                    <strong>Perhatian:</strong> Jalankan <strong>Generate Dokumen 1 s.d. 6</strong> di Data Global terlebih dahulu agar daftar TP muncul otomatis di sini.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Pilih Tujuan Pembelajaran (TP)</label>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Pilih TP</label>
                       <select 
                         value={selectedTPIndex} 
                         onChange={(e) => setSelectedTPIndex(Number(e.target.value))}
-                        className="w-full text-sm rounded-xl border-slate-200 shadow-2xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 p-3.5 border bg-slate-50/70 font-semibold text-slate-800 outline-none transition-all"
+                        className="w-full text-xs sm:text-sm rounded-xl border-slate-300 p-3 border bg-slate-50 font-medium"
                       >
                         {extractedTPs.map((tp, idx) => (
-                          <option key={idx} value={idx}>
-                            [{tp.kode}] {tp.tujuan}
-                          </option>
+                          <option key={idx} value={idx}>[{tp.kode}] {tp.tujuan}</option>
                         ))}
                       </select>
                     </div>
-                    
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Materi Pokok (Otomatis dari ATP)</label>
-                      <div className="w-full text-sm rounded-xl border border-slate-200/80 p-3.5 bg-slate-100/70 text-slate-800 font-semibold min-h-[48px] flex items-center">
-                        {extractedTPs[selectedTPIndex]?.materi}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Alokasi Waktu (Otomatis)</label>
-                      <div className="w-full text-sm rounded-xl border border-slate-200/80 p-3.5 bg-slate-100/70 text-slate-800 font-semibold min-h-[48px] flex items-center space-x-2.5">
-                        <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
-                        <span>{extractedTPs[selectedTPIndex]?.pertemuan} Pertemuan (Total {extractedTPs[selectedTPIndex]?.jp} JP)</span>
-                      </div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Model Pembelajaran Utama</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Model Pembelajaran</label>
                       <select 
                         name="modelPembelajaran"
                         value={appData.modelPembelajaran} 
                         onChange={handleChange}
-                        className="w-full text-sm rounded-xl border-slate-200 shadow-2xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 p-3.5 border bg-white font-semibold text-slate-800 outline-none transition-all"
+                        className="w-full text-xs sm:text-sm rounded-xl border-slate-300 p-3 border bg-white"
                       >
                         <option value="Problem Based Learning (PBL)">Problem Based Learning (PBL)</option>
                         <option value="Project Based Learning (PjBL)">Project Based Learning (PjBL)</option>
                         <option value="Discovery Learning">Discovery Learning</option>
                         <option value="Inquiry Learning">Inquiry Learning</option>
-                        <option value="Cooperative Learning (Jigsaw/STAD)">Cooperative Learning (Jigsaw/STAD)</option>
-                        <option value="Direct Instruction (Pengajaran Langsung)">Direct Instruction (Pengajaran Langsung)</option>
                       </select>
                     </div>
                   </div>
                 )}
 
-                <div className="mt-8 flex flex-col items-center border-t border-slate-100 pt-6">
-                  {progressMsg && (
-                    <div className="w-full mb-4 px-4 py-3.5 bg-indigo-50 text-indigo-900 rounded-xl text-sm font-semibold flex items-center justify-center space-x-3 border border-indigo-200">
-                      <Loader2 className="animate-spin h-5 w-5 text-indigo-600" />
-                      <span>{progressMsg}</span>
-                    </div>
-                  )}
-                  {errorMsg && (
-                    <div className="w-full mb-4 px-4 py-3.5 bg-rose-50 text-rose-900 rounded-xl text-sm font-semibold flex items-center justify-center space-x-3 border border-rose-200">
-                      <AlertCircle className="h-5 w-5 text-rose-600" />
-                      <span>{errorMsg}</span>
-                    </div>
-                  )}
+                <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col items-center">
+                  {progressMsg && <p className="text-xs text-indigo-700 font-bold mb-2">{progressMsg}</p>}
+                  {errorMsg && <p className="text-xs text-rose-600 font-bold mb-2">{errorMsg}</p>}
                   <button 
                     onClick={handleGenerateModul} 
                     disabled={isGenerating || extractedTPs.length === 0} 
-                    className="w-full sm:w-2/3 max-w-xl flex justify-center items-center space-x-2 py-4 px-6 border border-transparent rounded-2xl shadow-xl shadow-emerald-600/20 text-base font-extrabold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 transition-all"
+                    className="w-full flex justify-center items-center space-x-2 py-3 px-5 rounded-xl text-xs sm:text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50"
                   >
-                    {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-                    <span>{isGenerating ? 'AI Sedang Merancang Modul...' : `Generate Modul Ajar (${extractedTPs[selectedTPIndex]?.pertemuan || 1} Pertemuan)`}</span>
+                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    <span>{isGenerating ? 'Membuat Modul...' : 'Generate Modul Ajar'}</span>
                   </button>
                 </div>
               </div>
               
-              {/* Pratinjau Modul Ajar (jika sudah ada) */}
               {generatedDocs.modul && (
-                <div className="w-full max-w-6xl bg-slate-900 rounded-3xl print-container relative flex flex-col items-center shadow-2xl border border-slate-800 overflow-hidden shrink-0">
-                  {/* Floating Action Bar */}
-                  <div className="w-full bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="w-full bg-slate-900 rounded-2xl shadow-xl overflow-hidden">
+                  <div className="bg-slate-950 px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800">
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold text-slate-400">Zoom Pratinjau:</span>
-                      <button onClick={() => setZoomLevel(z => Math.max(75, z - 10))} className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700">
-                        <ZoomOut className="h-4 w-4" />
-                      </button>
-                      <span className="text-xs font-bold text-white min-w-[42px] text-center">{zoomLevel}%</span>
-                      <button onClick={() => setZoomLevel(z => Math.min(125, z + 10))} className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700">
-                        <ZoomIn className="h-4 w-4" />
-                      </button>
+                      <span className="text-xs text-slate-400">Zoom:</span>
+                      <button onClick={() => setZoomLevel(z => Math.max(75, z - 10))} className="p-1 rounded bg-slate-800 text-white"><ZoomOut className="h-3.5 w-3.5" /></button>
+                      <span className="text-xs text-white">{zoomLevel}%</span>
+                      <button onClick={() => setZoomLevel(z => Math.min(125, z + 10))} className="p-1 rounded bg-slate-800 text-white"><ZoomIn className="h-3.5 w-3.5" /></button>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <button onClick={handleDownloadWord} className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl shadow-md text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-all">
-                        <Download className="h-4 w-4" /><span>Unduh Word (.doc)</span>
-                      </button>
-                      <button onClick={handleDownloadHTML} className="inline-flex items-center space-x-2 px-3.5 py-2 border border-slate-700 text-xs sm:text-sm font-bold rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 transition-all">
-                        <Code className="h-4 w-4" /><span>HTML</span>
-                      </button>
-                      <button onClick={handlePrintHTML} disabled={isDownloadingPDF} className="inline-flex items-center space-x-2 px-4 py-2 border border-emerald-500/30 text-xs sm:text-sm font-bold rounded-xl text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 transition-all">
-                        {isDownloadingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                        <span>{isDownloadingPDF ? 'Menyiapkan PDF...' : 'Unduh PDF'}</span>
-                      </button>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={handleDownloadWord} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600">Word</button>
+                      <button onClick={handleDownloadHTML} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 bg-slate-800">HTML</button>
+                      <button onClick={handlePrintHTML} className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-300 bg-emerald-500/20">PDF</button>
                     </div>
                   </div>
-
-                  {/* Document Paper Viewport */}
-                  <div className="w-full overflow-x-auto flex justify-center p-4 sm:p-8 custom-scrollbar">
+                  <div className="w-full overflow-x-auto p-4 flex justify-center">
                     <div 
-                      className="document-preview bg-white shadow-2xl p-6 sm:p-10 lg:p-14 text-black shrink-0 my-2 rounded-sm transition-all origin-top"
-                      style={{ 
-                        width: '100%', 
-                        maxWidth: '210mm', 
-                        minHeight: '297mm',
-                        transform: `scale(${zoomLevel / 100})`,
-                        transformOrigin: 'top center'
-                      }}
+                      className="document-preview bg-white shadow-2xl p-6 text-black"
+                      style={{ width: '100%', maxWidth: '210mm', minHeight: '297mm', transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
                       dangerouslySetInnerHTML={{ __html: generatedDocs.modul }}
                     />
                   </div>
@@ -1376,65 +1147,43 @@ function Dashboard({ user, userEmail, onLogout }) {
             </div>
           )}
 
-          {/* TAB 2-6: DOCUMENT PREVIEW */}
+          {/* TAB 2-6: PRATINJAU DOKUMEN LAINNYA */}
           {activeTab !== 'identitas' && activeTab !== 'modul' && (
-            <div className="flex-1 w-full flex flex-col items-center pb-12">
+            <div className="max-w-5xl mx-auto w-full flex flex-col items-center pb-16">
               {progressMsg && (
-                <div className="w-full max-w-6xl mb-4 px-4 py-3.5 bg-indigo-50 text-indigo-950 rounded-2xl text-sm font-bold flex items-center justify-center space-x-3 border border-indigo-200 shadow-sm print:hidden">
-                  <Loader2 className="animate-spin h-5 w-5 text-indigo-600 shrink-0" />
+                <div className="w-full mb-4 px-4 py-2.5 bg-indigo-50 text-indigo-900 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 border border-indigo-200">
+                  <Loader2 className="animate-spin h-4 w-4" />
                   <span>{progressMsg}</span>
                 </div>
               )}
               {errorMsg && (
-                <div className="w-full max-w-6xl mb-4 px-4 py-3.5 bg-rose-50 text-rose-900 rounded-2xl text-sm font-bold flex items-center justify-center space-x-3 border border-rose-200 print:hidden">
-                  <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
+                <div className="w-full mb-4 px-4 py-2.5 bg-rose-50 text-rose-900 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 border border-rose-200">
+                  <AlertCircle className="h-4 w-4" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
               {generatedDocs[activeTab] ? (
-                <div className="w-full max-w-6xl bg-slate-900 rounded-3xl print:bg-white print-container relative flex flex-col items-center shadow-2xl border border-slate-800 overflow-hidden shrink-0">
-                  
-                  {/* Top Action Bar inside Preview */}
-                  <div className="w-full bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 print:hidden no-print">
+                <div className="w-full bg-slate-900 rounded-2xl shadow-xl overflow-hidden">
+                  <div className="bg-slate-950 px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800">
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold text-slate-400">Zoom:</span>
-                      <button onClick={() => setZoomLevel(z => Math.max(75, z - 10))} className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700" title="Perkecil">
-                        <ZoomOut className="h-4 w-4" />
-                      </button>
-                      <span className="text-xs font-bold text-white min-w-[42px] text-center">{zoomLevel}%</span>
-                      <button onClick={() => setZoomLevel(z => Math.min(125, z + 10))} className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700" title="Perbesar">
-                        <ZoomIn className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleRegenerateSingleDoc(activeTab)} 
-                        disabled={isGenerating}
-                        className="ml-2 inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 disabled:opacity-50 transition-all"
-                        title="Buat ulang dokumen ini saja"
-                      >
-                        <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? 'animate-spin text-indigo-400' : ''}`} />
-                        <span className="hidden sm:inline">Perbarui Dokumen</span>
-                      </button>
+                      <span className="text-xs text-slate-400">Zoom:</span>
+                      <button onClick={() => setZoomLevel(z => Math.max(75, z - 10))} className="p-1 rounded bg-slate-800 text-white"><ZoomOut className="h-3.5 w-3.5" /></button>
+                      <span className="text-xs text-white">{zoomLevel}%</span>
+                      <button onClick={() => setZoomLevel(z => Math.min(125, z + 10))} className="p-1 rounded bg-slate-800 text-white"><ZoomIn className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => handleRegenerateSingleDoc(activeTab)} disabled={isGenerating} className="ml-2 px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-300">Perbarui</button>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <button onClick={handleDownloadWord} className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl shadow-md text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-all">
-                        <Download className="h-4 w-4" /><span>Unduh Word (.doc)</span>
-                      </button>
-                      <button onClick={handleDownloadHTML} className="inline-flex items-center space-x-2 px-3.5 py-2 border border-slate-700 text-xs sm:text-sm font-bold rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 transition-all">
-                        <Code className="h-4 w-4" /><span>HTML</span>
-                      </button>
-                      <button onClick={handlePrintHTML} disabled={isDownloadingPDF} className="inline-flex items-center space-x-2 px-4 py-2 border border-emerald-500/30 text-xs sm:text-sm font-bold rounded-xl text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 transition-all">
-                        {isDownloadingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                        <span>{isDownloadingPDF ? 'Menyiapkan PDF...' : 'Unduh PDF'}</span>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={handleDownloadWord} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600">Word</button>
+                      <button onClick={handleDownloadHTML} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-200 bg-slate-800">HTML</button>
+                      <button onClick={handlePrintHTML} disabled={isDownloadingPDF} className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-300 bg-emerald-500/20">
+                        {isDownloadingPDF ? '...' : 'PDF'}
                       </button>
                     </div>
                   </div>
-
-                  {/* Paper Container */}
-                  <div className="w-full overflow-x-auto flex justify-center p-4 sm:p-8 custom-scrollbar">
+                  <div className="w-full overflow-x-auto p-4 flex justify-center">
                     <div 
-                      className="document-preview bg-white mx-auto shadow-2xl p-6 sm:p-10 lg:p-14 text-black shrink-0 my-2 print:mt-0 print:mb-0 print:p-0 rounded-sm transition-all"
+                      className="document-preview bg-white shadow-2xl p-6 text-black"
                       style={{ 
                         width: '100%', 
                         maxWidth: isCurrentLandscape ? '297mm' : '210mm',
@@ -1447,62 +1196,40 @@ function Dashboard({ user, userEmail, onLogout }) {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 print:hidden p-8 text-center w-full max-w-md mx-auto">
-                  <div className="h-20 w-20 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-6">
-                    <FileText className="h-10 w-10 text-indigo-500" />
-                  </div>
-                  <p className="text-xl font-extrabold text-slate-800 mb-2">Dokumen {currentTabObj?.label} Kosong</p>
-                  <p className="text-sm text-slate-500 leading-relaxed mb-6">Anda dapat membuat seluruh dokumen sekaligus melalui menu <strong>Data Global</strong> atau langsung menyusun dokumen ini sekarang.</p>
-                  <div className="flex flex-wrap items-center justify-center gap-3">
-                    <button 
-                      onClick={() => handleRegenerateSingleDoc(activeTab)} 
-                      disabled={isGenerating}
-                      className="px-5 py-2.5 bg-indigo-600 text-white text-sm rounded-xl font-bold shadow-md shadow-indigo-600/20 hover:bg-indigo-500 disabled:opacity-50 transition-all inline-flex items-center gap-2"
-                    >
-                      {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      <span>Buat {currentTabObj?.label} Saja</span>
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('identitas')} 
-                      className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm rounded-xl font-bold hover:bg-slate-50 transition-all"
-                    >
-                      Ke Data Global
-                    </button>
-                  </div>
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200 w-full">
+                  <FileText className="h-16 w-16 text-slate-300 mb-4" />
+                  <p className="text-base font-bold text-slate-700 mb-1">Dokumen Belum Tersedia</p>
+                  <p className="text-xs text-slate-500 mb-6">Klik tombol di bawah untuk membuat dokumen ini dengan bantuan AI.</p>
+                  <button 
+                    onClick={() => handleRegenerateSingleDoc(activeTab)} 
+                    disabled={isGenerating}
+                    className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-500 inline-flex items-center gap-2"
+                  >
+                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    <span>Buat Dokumen Ini</span>
+                  </button>
                 </div>
               )}
             </div>
           )}
-        </div>
-      </main>
+        </main>
+      </div>
 
-      {/* Global & Print CSS Injection */}
+      {/* Global CSS & Print Rules */}
       <style dangerouslySetInnerHTML={{__html: `
         .document-preview table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; border: 1pt solid black; }
-        .document-preview th, .document-preview td { border: 1pt solid black; padding: 0.6rem; text-align: left; vertical-align: top; }
+        .document-preview th, .document-preview td { border: 1pt solid black; padding: 0.5rem; text-align: left; vertical-align: top; }
         .document-preview th { background-color: #1a3a5c !important; color: white !important; font-weight: bold; }
         .document-preview h1, .document-preview h2, .document-preview h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1a3a5c; }
-        .document-preview p { margin-bottom: 0.5rem; }
-        .document-preview .header-kop { text-align: center; border-bottom: 3px solid black; padding-bottom: 1rem; margin-bottom: 2rem; }
         
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
         
         @media print {
-          @page { 
-            size: A4 ${['prosem1', 'prosem2', 'atp', 'kktp'].includes(activeTab) ? 'landscape' : 'portrait'}; 
-            margin: 1.5cm; 
-          }
+          @page { size: A4 portrait; margin: 1cm; }
           body { background: white; }
-          #root > div > aside { display: none !important; }
-          #root > div > main > header { display: none !important; }
-          
-          .print-container { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; margin: 0 !important; background: white !important; }
-          .document-preview { box-shadow: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
-          .no-print { display: none !important; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          aside, header, .no-print { display: none !important; }
         }
       `}} />
     </div>
@@ -1513,14 +1240,14 @@ function Dashboard({ user, userEmail, onLogout }) {
 function Input({ name, label, val, onChange, placeholder }) {
   return (
     <div>
-      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">{label}</label>
+      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">{label}</label>
       <input 
         type="text" 
         name={name} 
         value={val} 
         onChange={onChange} 
         placeholder={placeholder} 
-        className="w-full text-sm rounded-xl border-slate-200 border p-3 bg-slate-50/70 text-slate-800 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" 
+        className="w-full text-xs sm:text-sm rounded-xl border-slate-300 border p-3 bg-slate-50 text-slate-800 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none" 
       />
     </div>
   );
