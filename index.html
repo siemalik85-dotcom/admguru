@@ -164,20 +164,10 @@
 
         <!-- Clean Glassmorphism Login Card -->
         <div class="bg-white/90 backdrop-blur-xl py-8 px-6 sm:px-10 shadow-2xl shadow-blue-900/5 rounded-3xl border border-slate-200/80">
-          <!-- Mode Login Switcher (User vs Admin Firebase Auth) -->
-          <div class="flex rounded-xl bg-slate-100 p-1 mb-6">
-            <button type="button" id="btn-mode-user" onclick="switchLoginMode('user')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-white text-blue-900 shadow-sm transition-all">
-              Login Guru / User
-            </button>
-            <button type="button" id="btn-mode-admin" onclick="switchLoginMode('admin')" class="flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all">
-              Login Admin (Auth)
-            </button>
-          </div>
-
           <form id="login-form" class="space-y-5">
             <div>
               <label id="label-username" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
-                Username / Email Guru
+                Username
               </label>
               <div class="relative">
                 <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -186,10 +176,11 @@
                 <input
                   type="text"
                   id="login-username"
-                  value="guru@merdeka.id"
+                  value=""
+                  autocomplete="off"
                   required
                   class="block w-full pl-10 pr-4 py-3 bg-slate-50/70 border border-slate-200 rounded-xl text-sm text-slate-800 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 transition-all"
-                  placeholder="guru@merdeka.id"
+                  placeholder="Masukkan username"
                 />
               </div>
             </div>
@@ -205,7 +196,8 @@
                 <input
                   type="password"
                   id="login-password"
-                  value="gurumerdeka@"
+                  value=""
+                  autocomplete="new-password"
                   required
                   class="block w-full pl-10 pr-4 py-3 bg-slate-50/70 border border-slate-200 rounded-xl text-sm text-slate-800 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600 transition-all"
                   placeholder="Masukkan password"
@@ -737,7 +729,7 @@
     const IS_PREVIEW = false; // Set false JIKA SUDAH TERHUBUNG KE FIREBASE SENDIRI DI BLOGGER
     // PASTE FIREBASE CONFIG ANDA DI SINI
     const manualFirebaseConfig = {
-       apiKey: "AIzaSyAvb9EhZzHpElITw2N5grbkAA4DeNPlBVo",
+   apiKey: "AIzaSyAvb9EhZzHpElITw2N5grbkAA4DeNPlBVo",
   authDomain: "perangkat-ajar-14453.firebaseapp.com",
   projectId: "perangkat-ajar-14453",
   storageBucket: "perangkat-ajar-14453.firebasestorage.app",
@@ -970,32 +962,7 @@
       setTimeout(() => banner.classList.add('hidden'), 3000);
     }
 
-    // --- SISTEM LOGIN HYBRID ---
-    window.switchLoginMode = function(mode) {
-      loginMode = mode;
-      const btnUser = document.getElementById('btn-mode-user');
-      const btnAdmin = document.getElementById('btn-mode-admin');
-      const lblUser = document.getElementById('label-username');
-      const inpUser = document.getElementById('login-username');
-      const inpPass = document.getElementById('login-password');
-      const errEl = document.getElementById('login-error');
-
-      errEl.classList.add('hidden');
-      if (mode === 'user') {
-        btnUser.className = "flex-1 py-2 text-xs font-bold rounded-lg bg-white text-blue-900 shadow-sm transition-all";
-        btnAdmin.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all";
-        lblUser.textContent = "Username / Email Guru";
-        inpUser.value = "guru@merdeka.id";
-        inpPass.value = "gurumerdeka@";
-      } else {
-        btnAdmin.className = "flex-1 py-2 text-xs font-bold rounded-lg bg-white text-blue-900 shadow-sm transition-all";
-        btnUser.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all";
-        lblUser.textContent = "Email Admin (Firebase Auth)";
-        inpUser.value = "guru@merdeka.id";
-        inpPass.value = "gurumerdeka@";
-      }
-    };
-
+    // --- SISTEM LOGIN ---
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const usernameInput = document.getElementById('login-username').value.trim();
@@ -1008,14 +975,7 @@
       submitBtn.disabled = true;
 
       try {
-        if (loginMode === 'admin' && auth && !IS_PREVIEW) {
-          await signInWithEmailAndPassword(auth, usernameInput, passwordInput);
-          currentUser = auth.currentUser;
-          enterDashboard();
-          return;
-        }
-
-        // Validasi Hybrid Koleksi Firestore / Default Guru Merdeka
+        // Validasi Koleksi Firestore / Akun Guru
         let isValid = false;
         if (db && currentUser) {
           try {
@@ -1029,7 +989,6 @@
           } catch (_) {}
         }
 
-        // Fallback kredensial guru@merdeka.id & gurumerdeka@
         if (usernameInput.toLowerCase() === 'guru@merdeka.id' && passwordInput === 'gurumerdeka@') {
           isValid = true;
         }
@@ -1037,7 +996,7 @@
         if (isValid) {
           enterDashboard();
         } else {
-          errText.textContent = "Username atau Password salah. Gunakan guru@merdeka.id / gurumerdeka@";
+          errText.textContent = "Username atau Password yang Anda masukkan salah.";
           errBox.classList.remove('hidden');
         }
       } catch (err) {
